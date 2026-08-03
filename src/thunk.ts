@@ -9,7 +9,9 @@ type ThunkFn<T> = ContinuationFn<void, T>;
 export interface Thunk<T> extends Continuation<void, T> {
   yield: T;
   andThen: <U>(b: ContinuationLike<T, U>) => Thunk<U>;
-  pipe: <U>(b: ContinuationLike<ThunkLike<T>, U>) => Thunk<U>;
+  pipe: <U>(
+    b: ContinuationLike<ThunkLike<T>, U> | ContinuationLike<Thunk<T>, U>,
+  ) => Thunk<U>;
   flatMap: <U>(
     b:
       | ContinuationLike<T, U | Thunk<U>>
@@ -58,7 +60,9 @@ export class ThunkClass<T>
     });
   };
 
-  readonly pipe = <U>(b: ContinuationLike<ThunkLike<T>, U>): Thunk<U> => {
+  readonly pipe = <U>(
+    b: ContinuationLike<ThunkLike<T>, U> | ContinuationLike<Thunk<T>, U>,
+  ): Thunk<U> => {
     return Continuation(b).bind(this);
   };
 }
