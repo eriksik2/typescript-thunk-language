@@ -9,6 +9,7 @@ import type {
   EmptyProtocols,
   ExecuteResult,
   GetRequires,
+  HasAsync,
   IdentityCarrier,
   MergeProtocols,
   Protocol,
@@ -20,6 +21,7 @@ import type {
   Thunk,
   ThunkReturnType,
   ThunkSymbol,
+  WithAsync,
   WithRequires,
 } from "./src/index";
 
@@ -78,6 +80,25 @@ describe("@thunk/types", () => {
     const _ok: Ok = true;
     const _bad: Bad = true;
     expect(_ok && _bad).toBe(true);
+  });
+
+  test("ExecuteResult: Async → Promise<T>", () => {
+    type AsyncOk = ExpectEqual<
+      ExecuteResult<number, WithAsync>,
+      Promise<number>
+    >;
+    type Merged = MergeProtocols<WithAsync, WithRequires<"Db">>;
+    type StillErr = ExpectExtends<
+      ExecuteResult<number, Merged>,
+      CompileError<"Unsatisfied requirements">
+    >;
+    type Has = ExpectEqual<HasAsync<WithAsync>, true>;
+    type HasUnion = ExpectEqual<HasAsync<EmptyProtocols | WithAsync>, true>;
+    const _a: AsyncOk = true;
+    const _e: StillErr = true;
+    const _h: Has = true;
+    const _u: HasUnion = true;
+    expect(_a && _e && _h && _u).toBe(true);
   });
 
   test("Thunk helpers: ReturnType, Protocol, Strip", () => {

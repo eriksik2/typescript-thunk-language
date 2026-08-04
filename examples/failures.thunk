@@ -1,0 +1,39 @@
+/**
+ * Hierarchical + abstract symbols, and the built-in Failure tree.
+ *
+ * Run:  bun run thunk run examples/failures.thunk
+ */
+
+import {
+  Failure,
+  Defect,
+  UnhandledError,
+  Error,
+  Symbol,
+} from "@thunk/runtime"
+
+const defect = Defect({ message: "invariant violated" })
+const unhandled = UnhandledError({ message: "promise rejected" })
+const err = Error({ message: "not found" })
+
+const checks = thunk {
+  const a = Symbol.has(defect, Failure)
+  const b = Symbol.is(defect, Defect)
+  const c = Symbol.is(defect, Failure)
+  const d = Symbol.has(unhandled, Failure)
+  const e = Symbol.has(err, Error)
+  const asFailure = Symbol.to(defect, Failure)
+  const leaf = Symbol.of(defect)
+  return {
+    a,
+    b,
+    c,
+    d,
+    e,
+    leafIsDefect: leaf === Defect,
+    asFailureMessage: asFailure.message,
+  }
+}
+
+const result = run checks
+console.log(result)

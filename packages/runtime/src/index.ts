@@ -10,10 +10,33 @@ export {
   provide,
   layerOf,
   mergeLayers,
-  symbolOf,
-  Symbol,
   type Layer,
 } from "./internal";
+
+export {
+  symbolOf,
+  symbolIs,
+  symbolHas,
+  symbolTo,
+  symbolExtends,
+  Symbol,
+} from "./symbol-api";
+
+export { wrap } from "./wrap";
+
+export {
+  Failure,
+  Defect,
+  UnhandledError,
+  Error,
+} from "./failure";
+export type {
+  Failure,
+  Defect,
+  UnhandledError,
+  Error,
+  FailurePayload,
+} from "./failure";
 
 export type {
   Thunk,
@@ -24,8 +47,14 @@ export type {
   ThunkSymbol,
   SymbolType,
   SymbolOfValue,
+  SymbolExtends,
+  SymbolToTarget,
   IdentityCarrier,
+  ParentCarrier,
   WithRequires,
+  WithAsync,
   ProvideRequires,
   Requires,
+  Async,
+  HasAsync,
 } from "@thunk/types";

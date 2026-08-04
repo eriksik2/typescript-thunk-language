@@ -113,3 +113,78 @@ describe("use / provide / Layer", () => {
     expect(() => symbolOf(a as never)).toThrow(/Symbol\.of/);
   });
 });
+
+describe("hierarchical / abstract symbols", () => {
+  test("abstract symbol cannot brand", () => {
+    const Failure = __makeSymbol<{ message: string }>("Failure", {
+      abstract: true,
+    });
+    expect(() => Failure({ message: "x" })).toThrow(/abstract symbol/);
+  });
+
+  test("Symbol.is is exact; Symbol.has walks hierarchy", () => {
+    const Failure = __makeSymbol<{ message: string }>("Failure", {
+      abstract: true,
+    });
+    const Defect = __makeSymbol<{ message: string }>("Defect", {
+      parent: Failure,
+    });
+    const Unhandled = __makeSymbol<{ message: string }>("UnhandledError", {
+      parent: Failure,
+    });
+    const defect = Defect({ message: "boom" });
+    expect(Symbol.of(defect)).toBe(Defect);
+    expect(Symbol.is(defect, Defect)).toBe(true);
+    expect(Symbol.is(defect, Failure)).toBe(false);
+    expect(Symbol.has(defect, Failure)).toBe(true);
+    expect(Symbol.has(defect, Defect)).toBe(true);
+    expect(Symbol.has(defect, Unhandled)).toBe(false);
+    expect(Symbol.extends(Defect, Failure)).toBe(true);
+    expect(Symbol.extends(Defect, Unhandled)).toBe(false);
+  });
+
+  test("Symbol.to upcasts; wrong target is Defect", () => {
+    const Failure = __makeSymbol<{ message: string }>("Failure", {
+      abstract: true,
+    });
+    const DefectSym = __makeSymbol<{ message: string }>("Defect", {
+      parent: Failure,
+    });
+    const Sibling = __makeSymbol<{ message: string }>("Sibling", {
+      parent: Failure,
+    });
+    const defect = DefectSym({ message: "boom" });
+    const asFailure = Symbol.to(defect, Failure);
+    expect(asFailure.message).toBe("boom");
+    expect(Symbol.of(asFailure)).toBe(DefectSym);
+    expect(() =>
+      Symbol.to(defect, Sibling as never),
+    ).toThrow();
+  });
+
+  test("builtin Failure hierarchy", async () => {
+    const {
+      Failure,
+      Defect,
+      UnhandledError,
+      Error: ThunkError,
+      Symbol: Sym,
+    } = await import("./src/index");
+    const d = Defect({ message: "invariant" });
+    const u = UnhandledError({ message: "rejected" });
+    const e = ThunkError({ message: "app" });
+    expect(Sym.has(d, Failure)).toBe(true);
+    expect(Sym.is(d, Failure)).toBe(false);
+    expect(Sym.is(d, Defect)).toBe(true);
+    expect(Sym.has(u, Failure)).toBe(true);
+    expect(Sym.has(e, Failure)).toBe(true);
+    expect(Sym.has(d, UnhandledError)).toBe(false);
+    expect(Sym.of(d)).toBe(Defect);
+    expect(Sym.to(d, Failure).message).toBe("invariant");
+    expect(() =>
+      (Failure as unknown as (v: { message: string }) => unknown)({
+        message: "nope",
+      }),
+    ).toThrow(/abstract/);
+  });
+});

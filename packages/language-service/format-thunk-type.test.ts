@@ -50,6 +50,12 @@ describe("formatThunkType", () => {
     expect(formatThunkType("T", "{ Once: void }")).toBe("Thunk<T>\n  Once");
   });
 
+  test("Async flag from [Async]: void", () => {
+    expect(formatThunkType("number", "{ readonly [Async]: void }")).toBe(
+      "Thunk<number>\n  Async",
+    );
+  });
+
   test("Requires + Once together", () => {
     expect(
       formatThunkType(
@@ -141,6 +147,14 @@ describe("formatSymbolDisplayString", () => {
       "const Database: ((value: { name: string; }) => Database) & { readonly key: symbol; readonly __assoc: { name: string; }; }";
     expect(formatHoverDisplayString(raw)).toBe(
       "const Database: symbol { name: string }",
+    );
+  });
+
+  test("abstract const identity → abstract symbol T", () => {
+    const raw =
+      "const Failure: { readonly key: symbol; readonly __assoc: { message: string; }; readonly __abstract: true }";
+    expect(formatHoverDisplayString(raw)).toBe(
+      "const Failure: abstract symbol { message: string }",
     );
   });
 });

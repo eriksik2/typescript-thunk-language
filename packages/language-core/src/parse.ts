@@ -68,7 +68,7 @@ class Parser {
       return this.parseProtocolDeclaration(start);
     }
 
-    if (this.peekKeyword("symbol")) {
+    if (this.peekKeyword("abstract") || this.peekKeyword("symbol")) {
       return this.parseSymbolDeclaration(start);
     }
 
@@ -365,7 +365,7 @@ class Parser {
     const baseText = this.consumeTypeBase();
     this.skipTrivia();
     const protocols: ProtocolClause[] = [];
-    while (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+    while (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
       protocols.push(this.parseProtocolClause());
       this.skipTrivia();
     }
@@ -400,7 +400,7 @@ class Parser {
           const save = this.pos;
           this.pos++;
           this.skipTrivia();
-          if (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+          if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
             this.pos = save;
             break;
           }
@@ -410,7 +410,7 @@ class Parser {
           }
           this.pos = save;
         }
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once")) break;
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) break;
       }
 
       const c = this.peek();
@@ -420,7 +420,7 @@ class Parser {
         const save = this.pos;
         this.pos++;
         this.skipTrivia();
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peek() === "=") {
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async") || this.peek() === "=") {
           this.pos = save;
           break;
         }
@@ -494,6 +494,12 @@ class Parser {
         range: this.range(start, this.pos),
       };
     }
+    if (this.matchKeyword("Async")) {
+      return {
+        name: "Async",
+        range: this.range(start, this.pos),
+      };
+    }
     throw new ParseError("expected protocol clause", this.pos);
   }
 
@@ -525,27 +531,57 @@ class Parser {
   }
 
   /**
-   * `symbol Name = Type;` or `symbol Name { ... }`
+   * `symbol Name = Type;` / `symbol Name { ... }` /
+   * `abstract symbol …` / `symbol Name extends Parent [{ … }]`
    * Not parsed in expression position (anonymous symbols deferred).
    */
   private parseSymbolDeclaration(start: number): SymbolDeclaration {
-    this.matchKeyword("symbol");
+    const isAbstract = this.matchKeyword("abstract");
+    this.skipTrivia();
+    if (!this.matchKeyword("symbol")) {
+      throw new ParseError("Expected 'symbol' after 'abstract'", this.pos);
+    }
     this.skipTrivia();
     const name = this.parseIdentifier();
     this.skipTrivia();
+
+    let extendsName: Identifier | undefined;
+    if (this.matchKeyword("extends")) {
+      this.skipTrivia();
+      extendsName = this.parseIdentifier();
+      this.skipTrivia();
+    }
 
     if (this.peek() === "{") {
       const typeStart = this.pos;
       const braces = this.consumeBalanced("{", "}");
       this.expectSemiOrNewline();
+      const emptyBody = braces.replace(/\s/g, "") === "{}";
       return {
         kind: "SymbolDeclaration",
         name,
-        associatedType: {
-          form: "object",
-          text: braces,
-          range: this.range(typeStart, typeStart + braces.length),
-        },
+        isAbstract,
+        extendsName,
+        associatedType:
+          extendsName && emptyBody
+            ? undefined
+            : {
+                form: "object",
+                text: braces,
+                range: this.range(typeStart, typeStart + braces.length),
+              },
+        range: this.range(start, this.pos),
+      };
+    }
+
+    if (extendsName) {
+      // `symbol Child extends Parent` — inherit associated type
+      this.expectSemiOrNewline();
+      return {
+        kind: "SymbolDeclaration",
+        name,
+        isAbstract,
+        extendsName,
         range: this.range(start, this.pos),
       };
     }
@@ -558,6 +594,7 @@ class Parser {
     return {
       kind: "SymbolDeclaration",
       name,
+      isAbstract,
       associatedType: {
         form: "alias",
         text: aliasText,

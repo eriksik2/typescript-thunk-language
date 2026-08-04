@@ -32,6 +32,8 @@ The operand is a **full expression** (identifier, call, member access, nested `t
 
 `try` / `catch` / `finally` are **out of scope** for now (handler/finalizer state is a separate design).
 
+Promise interop: [`wrap`](./wrap.md) (introduces [`Async`](../types/async.md)).
+
 ## Examples
 
 ```ts
@@ -55,6 +57,7 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and [`examples/requi
 
 - [Thunk blocks](./thunk-blocks.md)
 - [Control flow](./control-flow.md) — `if` / loops with `run` become state transitions
+- [wrap](./wrap.md) — Promise bridge (`Async`)
 - [use](../environment/use.md) — often combined as `run use(Database)`
 - [provide](../environment/provide.md)
 - [Runtime packages](../modules/runtime-packages.md) — `machine` / `runEffect` / `execute` live in `/internal`

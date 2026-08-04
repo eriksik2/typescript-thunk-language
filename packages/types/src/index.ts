@@ -24,6 +24,14 @@ export declare const Requires: unique symbol;
 export type Requires = typeof Requires;
 
 /**
+ * Identity of the built-in `Async` protocol (flag).
+ * Present when a thunk may wait on the event loop (`wrap` / Promise).
+ * Changes `execute`’s result to `Promise<T>`; not discharged by `provide`.
+ */
+export declare const Async: unique symbol;
+export type Async = typeof Async;
+
+/**
  * Thunk yield type + protocol bag.
  * Second parameter defaults so pure thunks display as `Thunk<T>`.
  *
@@ -46,6 +54,14 @@ export type ThunkSymbol<T> = {
   readonly __thunkSymbol?: "ThunkSymbol";
   readonly __assoc: T;
   readonly key: symbol;
+};
+
+/**
+ * Phantom parent link on a symbol identity (`typeof Child`).
+ * Enables type-level `SymbolExtends` / `Symbol.to` checks.
+ */
+export type ParentCarrier<P = unknown> = {
+  readonly __parent?: P;
 };
 
 /**
@@ -80,6 +96,33 @@ export type SymbolOfValue<V> = V extends IdentityCarrier<infer S>
   : never;
 
 /**
+ * True when `Child` identity is `Parent` or extends it (declaration hierarchy).
+ * Walks `__parent` phantoms on identities — not value subtyping.
+ */
+export type SymbolExtends<Child, Parent> = [Child] extends [Parent]
+  ? [Parent] extends [Child]
+    ? true
+    : SymbolExtendsParentWalk<Child, Parent>
+  : SymbolExtendsParentWalk<Child, Parent>;
+
+type SymbolExtendsParentWalk<Child, Parent> = Child extends {
+  readonly __parent?: infer P;
+}
+  ? [P] extends [undefined]
+    ? false
+    : [P] extends [Parent]
+      ? true
+      : SymbolExtends<P, Parent>
+  : false;
+
+/**
+ * `Symbol.to` target: `Parent` only when the value's leaf identity extends it.
+ * Otherwise `never` (type error at the call site).
+ */
+export type SymbolToTarget<V, Parent> =
+  SymbolExtends<SymbolOfValue<V>, Parent> extends true ? Parent : never;
+
+/**
  * Nominal brand over associated type `T`, keyed by a unique brand key.
  * Emitted by the lowerer for each `symbol` declaration.
  */
@@ -91,12 +134,25 @@ export type Branded<T, Brand extends PropertyKey, S = unknown> = T & {
 /** Bag containing only a `Requires` entry (keys are symbol identities). */
 export type WithRequires<Tags> = ProtocolBag<{ readonly [Requires]: Tags }>;
 
+/** Bag containing only the `Async` flag protocol. */
+export type WithAsync = ProtocolBag<{ readonly [Async]: void }>;
+
 /** Payload of `Requires` in `P`, or `never` when absent (identity). */
 export type GetRequires<P extends ProtocolBag> = P extends {
   readonly [Requires]: infer R;
 }
   ? R
   : never;
+
+/**
+ * `true` if `P` (or any constituent of a union `P`) carries `Async`.
+ * Distributes so machine step unions keep Async when any path has it.
+ */
+export type HasAsync<P> = true extends (
+  P extends any ? (Async extends keyof P ? true : false) : never
+)
+  ? true
+  : false;
 
 /**
  * `Requires.bind<A, B>` — sequential composition unions requirement payloads.
@@ -112,7 +168,7 @@ type SimplifyEmpty<P> = keyof P extends never ? EmptyProtocols : P;
 /**
  * Merge two protocol bags.
  * `Requires` payloads use `RequiresBind` (union); absent side is `never`.
- * Other keys are intersected via `Omit` + `&` (v0: no other protocols yet).
+ * Other keys (e.g. `Async`) are intersected via `Omit` + `&`.
  */
 export type MergeProtocols<
   A extends ProtocolBag,
@@ -151,12 +207,17 @@ export type CompileError<Message extends string> = {
 };
 
 /**
- * Result of `execute`: yield type if no requirements remain, else `CompileError`.
+ * Result of `execute`:
+ * - requirements remain → `CompileError`
+ * - `Async` present → `Promise<T>`
+ * - otherwise → `T`
  */
 export type ExecuteResult<T, P extends ProtocolBag> = [
   GetRequires<P>,
 ] extends [never]
-  ? T
+  ? HasAsync<P> extends true
+    ? Promise<T>
+    : T
   : CompileError<"Unsatisfied requirements">;
 
 /** @deprecated Prefer `ThunkReturnType` — name clashes with lib `ReturnType`. */

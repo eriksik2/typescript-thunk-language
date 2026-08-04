@@ -11,6 +11,9 @@
  *   protocol Name<...> { bind<A,B>: ...; ... }
  *   symbol Name = Type;
  *   symbol Name { ... }
+ *   abstract symbol Name { ... }
+ *   symbol Name extends Parent
+ *   symbol Name extends Parent { ... }
  *
  * Expressions are kept as raw TypeScript text + span (hybrid strategy).
  */
@@ -117,13 +120,23 @@ export interface SymbolAssociatedType {
 }
 
 /**
- * `symbol Name = Type;` or `symbol Name { ... }` (object sugar).
+ * `symbol Name = Type;` / `symbol Name { ... }` / `abstract symbol …` /
+ * `symbol Name extends Parent [{ … }]`.
  * Introduces value `Name` and branded type `Name`.
+ * Abstract symbols are not callable brand constructors.
  */
 export interface SymbolDeclaration {
   readonly kind: "SymbolDeclaration";
   readonly name: Identifier;
-  readonly associatedType: SymbolAssociatedType;
+  /** When true, identity is not a brand constructor. */
+  readonly isAbstract: boolean;
+  /** Parent symbol name when declared with `extends`. */
+  readonly extendsName?: Identifier;
+  /**
+   * Associated type. Omitted when `extends Parent` with no body (inherit).
+   * With `extends` + `{ … }`, text is the *extra* fields (merged with parent).
+   */
+  readonly associatedType?: SymbolAssociatedType;
   readonly range: Range;
 }
 

@@ -35,4 +35,7 @@ Prefer this folder when you need **how a feature works**.
 |---|---|
 | [`examples/basic.thunk`](../../examples/basic.thunk) | `thunk` / `run` |
 | [`examples/symbols.thunk`](../../examples/symbols.thunk) | branding |
+| [`examples/symbols-hierarchy.thunk`](../../examples/symbols-hierarchy.thunk) | `abstract` / `extends` |
+| [`examples/failures.thunk`](../../examples/failures.thunk) | built-in Failure tree + `Symbol.is` |
+| [`examples/async-wrap.thunk`](../../examples/async-wrap.thunk) | `wrap` / `Async` |
 | [`examples/requires.thunk`](../../examples/requires.thunk) | `symbol` + `use` / `provide` |

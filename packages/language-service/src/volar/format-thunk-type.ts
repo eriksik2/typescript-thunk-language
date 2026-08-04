@@ -360,6 +360,7 @@ export function formatThunkDisplayString(display: string): string {
  */
 export function formatSymbolDisplayString(display: string): string {
   let out = collapseConstIdentity(display);
+  out = collapseAbstractConst(out);
   out = collapseTypeBrand(out);
   if (/__brand_/.test(out) || /__assoc/.test(out)) {
     out = collapseSymbolTypeAliasBlock(out);
@@ -426,12 +427,66 @@ function collapseTypeBrand(display: string): string {
     while (display[bodyEnd] === ";" || display[bodyEnd] === " ") bodyEnd++;
 
     const body = display.slice(bodyStart, bodyEnd);
-    const first = body.split(/\s*&\s*\{\s*readonly\s*\[__brand_/)[0]?.trim();
-    if (!first) continue;
+    // Prefer __assoc payload (works for hierarchical `Parent & { brand }`).
+    let assocText: string | undefined;
+    const assocKey = body.search(/readonly\s+__assoc\s*:/);
+    if (assocKey !== -1) {
+      const afterColon = body.indexOf(":", assocKey) + 1;
+      let i = afterColon;
+      while (i < body.length && /\s/.test(body[i]!)) i++;
+      if (body[i] === "{") {
+        const end = matchingBrace(body, i);
+        if (end !== undefined) assocText = body.slice(i, end + 1);
+      } else {
+        // Non-object assoc — read until `;` or `}` at depth 0
+        const end = readTypeUntil(body, i, (c) => c === ";" || c === "}");
+        if (end !== undefined) assocText = body.slice(i, end).trim();
+      }
+    }
+    if (!assocText) {
+      assocText = body.split(/\s*&\s*\{\s*readonly\s*\[__brand_/)[0]?.trim();
+    }
+    if (!assocText) continue;
     pieces.push({
       start: match.index,
       end: bodyEnd,
-      replacement: `type ${name} = symbol ${normalizeAssocType(first)}`,
+      replacement: `type ${name} = symbol ${normalizeAssocType(assocText)}`,
+    });
+  }
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const p = pieces[i]!;
+    result = result.slice(0, p.start) + p.replacement + result.slice(p.end);
+  }
+  return result;
+}
+
+/**
+ * Abstract symbol identities: `{ key; __assoc: T; __abstract: true }`
+ * → `abstract symbol T`.
+ */
+function collapseAbstractConst(display: string): string {
+  const re =
+    /const\s+(\w+)\s*:\s*\{\s*readonly\s+key:\s*symbol;\s*readonly\s+__assoc:\s*/g;
+  let result = display;
+  const pieces: { start: number; end: number; replacement: string }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(display)) !== null) {
+    const name = match[1]!;
+    const assocStart = match.index + match[0].length;
+    const afterAssoc = readTypeUntil(display, assocStart, (c, i, s) => {
+      return c === ";" && /readonly\s+__abstract/.test(s.slice(i));
+    });
+    if (afterAssoc === undefined) continue;
+    const assoc = display.slice(assocStart, afterAssoc).trim();
+    const rest = display.slice(afterAssoc);
+    const abs = rest.match(
+      /^;\s*readonly\s+__abstract:\s*true\s*\}/,
+    );
+    if (!abs) continue;
+    pieces.push({
+      start: match.index,
+      end: afterAssoc + abs[0].length,
+      replacement: `const ${name}: abstract symbol ${normalizeAssocType(assoc)}`,
     });
   }
   for (let i = pieces.length - 1; i >= 0; i--) {

@@ -1,0 +1,23 @@
+// Hierarchical symbols (extends) — no value LSP
+
+import { Symbol } from "@thunk/runtime"
+
+abstract symbol Animal {
+  name: string
+}
+
+symbol Dog extends Animal {
+  breed: string
+}
+
+symbol Cat extends Animal
+
+const dog = Dog({ name: "Rex", breed: "lab" })
+const cat = Cat({ name: "Misty" })
+
+// const bad: Animal = cat  // type error — Cat is not Animal
+
+const asAnimal = Symbol.to(cat, Animal)
+const leafIsCat = Symbol.of(cat) === Cat
+const exactAnimal = Symbol.is(cat, Animal)
+const pedigree = Symbol.has(cat, Animal)
