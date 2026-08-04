@@ -195,6 +195,30 @@ const x = use
     expect(lowered.generatedText).not.toContain("bind(");
   });
 
+  test("if / for / break / continue lower to state transitions", () => {
+    const lowered = lowerThunkSource(`const program = thunk {
+  let total = 0
+  for (let i = 0; i < 3; i = i + 1) {
+    const v = run step(i)
+    if (v === 0) {
+      continue
+    }
+    total = total + v
+    if (total > 10) {
+      break
+    }
+  }
+  return total
+}
+`);
+    expect(lowered.generatedText).toContain("machine(");
+    expect(lowered.generatedText).toContain("runEffect(step(i))");
+    expect(lowered.generatedText).toContain("continue;");
+    expect(lowered.generatedText).toMatch(/if \(v === 0\)/);
+    expect(lowered.generatedText).toMatch(/if \(total > 10\)/);
+    expect(lowered.generatedText).not.toContain("bind(");
+  });
+
   test("symbol name mappings land on generated Database identifier", () => {
     const source = `symbol Database {
   name: string

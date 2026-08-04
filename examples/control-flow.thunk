@@ -1,0 +1,115 @@
+/**
+ * Control-flow showcase: if/else, while, for, break, continue, early return,
+ * and multiple `run`s — all lowered through one iterative state machine.
+ *
+ * Run:  bun run thunk run examples/control-flow.thunk
+ * Build: bun run thunk build examples/control-flow.thunk
+ */
+
+const delay = (ms: number) => thunk {
+  // Pure busy-work stand-in (sync runtime has no real timers yet).
+  let t = 0
+  while (t < ms) {
+    t = t + 1
+  }
+  return ms
+}
+
+const step = (n: number) => thunk {
+  return n
+}
+
+const classify = (n: number) => thunk {
+  if (n < 0) {
+    return "neg"
+  } else if (n === 0) {
+    return "zero"
+  } else {
+    return "pos"
+  }
+}
+
+/**
+ * Sum odd-counted positive contributions from `start`..`limit` (inclusive),
+ * skipping zeros via `continue`, stopping early if the running total exceeds
+ * `cap`, and mixing in a few `run`s along the way.
+ */
+const accumulate = (start: number, limit: number, cap: number) => thunk {
+  const warm = run delay(3)
+  let total = warm * 0
+  let seen = 0
+
+  for (let i = start; i <= limit; i = i + 1) {
+    const kind = run classify(i)
+
+    if (kind === "zero") {
+      continue
+    }
+
+    if (kind === "neg") {
+      // Ignore negatives but keep looping.
+      seen = seen + 1
+      continue
+    }
+
+    // Positive path: take every other counted value.
+    const v = run step(i)
+    seen = seen + 1
+
+    if (seen % 2 === 0) {
+      continue
+    }
+
+    total = total + v
+
+    if (total > cap) {
+      break
+    }
+  }
+
+  // Early return when nothing useful was collected.
+  if (total === 0) {
+    return {
+      total: 0,
+      status: "empty",
+      warm: warm,
+    }
+  }
+
+  // Nested while to peel the total down for a checksum.
+  let checksum = total
+  let peels = 0
+  while (checksum > 10) {
+    checksum = checksum - 7
+    peels = peels + 1
+    if (peels >= 5) {
+      break
+    }
+  }
+
+  return {
+    total: total,
+    checksum: checksum,
+    peels: peels,
+    warm: warm,
+    status: "ok",
+  }
+}
+
+const program = thunk {
+  // Hits break after the running total exceeds the cap.
+  const capped = run accumulate(0, 12, 20)
+  // All negatives / zeros → early empty return.
+  const empty = run accumulate(-5, 0, 100)
+  // Small positive window with no cap pressure.
+  const small = run accumulate(1, 4, 100)
+
+  return {
+    capped: capped,
+    empty: empty,
+    small: small,
+  }
+}
+
+const result = run program
+console.log(JSON.stringify(result, null, 2))

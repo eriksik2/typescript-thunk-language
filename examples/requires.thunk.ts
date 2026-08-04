@@ -120,7 +120,6 @@ return runEffect(provide(
   ));
 case 2:
 return succeed(__resume);
-break;
 default:
 throw new Error("invalid thunk state");
 }

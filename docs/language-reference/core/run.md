@@ -54,6 +54,7 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and [`examples/requi
 ## Related
 
 - [Thunk blocks](./thunk-blocks.md)
+- [Control flow](./control-flow.md) — `if` / loops with `run` become state transitions
 - [use](../environment/use.md) — often combined as `run use(Database)`
 - [provide](../environment/provide.md)
 - [Runtime packages](../modules/runtime-packages.md) — `machine` / `runEffect` / `execute` live in `/internal`

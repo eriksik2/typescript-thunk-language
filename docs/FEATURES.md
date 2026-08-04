@@ -118,10 +118,12 @@ thunk {
 | Example | Expected |
 |---|---|
 | `const x = 1` before/after `run` | Stays in the appropriate continuation region |
-| `for` / `while` / `if` containing **no** `run` | Should work as ordinary TS text once expression/statement parsing allows (hybrid `TsExpression` / statements) |
+| `for` / `while` / `if` containing **no** `run` | Ordinary JS inside `defer` |
+| `for` / `while` / `if` / `break` / `continue` **with** `run` | State-machine transitions — see [`examples/control-flow.thunk`](../examples/control-flow.thunk) |
 | `run` inside loop condition / `finally` | **Unsupported** initially — see LANGUAGE §17.3 |
+| `try` / `catch` / `finally` | **Out of scope** for now |
 
-**Implementation notes.** `const`/`let` and expression statements work. Full CFG with `run` is deferred. Loops as opaque TS regions are only as good as the hybrid parser’s statement coverage.
+**Implementation notes.** `const`/`let`, expression statements, `if`/`else`, `while`, C-style `for`, `break`, and `continue` are parsed. With `run`, they lower through the state machine. `try`/`catch`/`finally` remain deferred.
 
 ---
 

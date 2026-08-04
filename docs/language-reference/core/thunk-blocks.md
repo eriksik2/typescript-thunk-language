@@ -23,7 +23,7 @@ const DatabaseLive = Database({
 })
 ```
 
-Body statements may include ordinary bindings, nested thunks, and [`run`](./run.md) in statement position.
+Body statements may include ordinary bindings, nested thunks, [`run`](./run.md) in statement position, and [control flow](./control-flow.md) (`if` / `while` / `for` / `break` / `continue`).
 
 ## Semantics
 
@@ -51,5 +51,6 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and nested usage in 
 ## Related
 
 - [run](./run.md)
+- [Control flow](./control-flow.md)
 - [Thunk type](../types/thunk-type.md)
 - [Bindings](./bindings.md)
