@@ -1,5 +1,6 @@
 import { use, provide, type Thunk } from "@thunk/runtime";
-import { succeed, defer, bind, execute, __makeSymbol } from "@thunk/runtime/internal";
+import { succeed, defer, runEffect, machine, execute, __makeSymbol } from "@thunk/runtime/internal";
+import type { ThunkReturnType } from "@thunk/types";
 
 declare const __brand_Config: unique symbol;
 const Config = __makeSymbol<{
@@ -46,17 +47,84 @@ type Database = {
   getUser: (id: string) => Thunk<User>;
 } } & { readonly __symbolIdentity?: typeof Database };
 
-const DatabaseLive = defer(() => bind(use(Config), config => succeed(Database({
+const DatabaseLive = defer(() => {
+let __state = 0;
+const __t0 = false ? use(Config) : undefined;
+let config: ThunkReturnType<NonNullable<typeof __t0>>;
+return machine(function (__resume?: any) {
+while (true) {
+switch (__state) {
+case 0:
+__state = 1;
+return runEffect(use(Config));
+case 1:
+config = __resume as ThunkReturnType<NonNullable<typeof __t0>>;
+return succeed(Database({
     name: config.environment,
     getUser: (id: string) => defer(() => succeed({
         id,
         name: "John Doe",
       }))
-  }))));
-const fetchUser = defer(() => bind(use(Database), db => bind(db.getUser("1234"), user => succeed(db.name + " " + user.name))));
-const program = defer(() => bind(DatabaseLive, db => bind(provide(
+  }));
+default:
+throw new Error("invalid thunk state");
+}
+}
+});
+});
+const fetchUser = defer(() => {
+let __state = 0;
+const __t0 = false ? use(Database) : undefined;
+let db: ThunkReturnType<NonNullable<typeof __t0>>;
+const __t1 = false ? db.getUser("1234") : undefined;
+let user: ThunkReturnType<NonNullable<typeof __t1>>;
+return machine(function (__resume?: any) {
+while (true) {
+switch (__state) {
+case 0:
+__state = 1;
+return runEffect(use(Database));
+case 1:
+db = __resume as ThunkReturnType<NonNullable<typeof __t0>>;
+__state = 2;
+return runEffect(db.getUser("1234"));
+case 2:
+user = __resume as ThunkReturnType<NonNullable<typeof __t1>>;
+return succeed(db.name + " " + user.name);
+default:
+throw new Error("invalid thunk state");
+}
+}
+});
+});
+const program = defer(() => {
+let __state = 0;
+const __t0 = false ? DatabaseLive : undefined;
+let db: ThunkReturnType<NonNullable<typeof __t0>>;
+const __t1 = false ? provide(
     fetchUser,
     db,
-  ), __v => succeed(__v))));
+  ) : undefined;
+return machine(function (__resume?: any) {
+while (true) {
+switch (__state) {
+case 0:
+__state = 1;
+return runEffect(DatabaseLive);
+case 1:
+db = __resume as ThunkReturnType<NonNullable<typeof __t0>>;
+__state = 2;
+return runEffect(provide(
+    fetchUser,
+    db,
+  ));
+case 2:
+return succeed(__resume);
+default:
+throw new Error("invalid thunk state");
+}
+}
+});
+});
 const result = execute(provide(program, ProductionConfig));
 console.log(result);

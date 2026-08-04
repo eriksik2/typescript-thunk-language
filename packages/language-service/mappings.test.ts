@@ -113,7 +113,8 @@ describe("ThunkVirtualCode", () => {
     expect(embedded.id).toBe("ts");
     expect(embedded.languageId).toBe("typescript");
     const gen = embedded.snapshot.getText(0, embedded.snapshot.getLength());
-    expect(gen).toContain("bind(");
+    expect(gen).toContain("runEffect(");
+    expect(gen).toContain("machine(");
     expect(gen).toContain("succeed(");
     expect(embedded.mappings.length).toBeGreaterThan(0);
   });

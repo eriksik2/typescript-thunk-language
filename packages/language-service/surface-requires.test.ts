@@ -273,8 +273,11 @@ const program: Thunk<string> = provide(fetchUser, DatabaseLive)
     expect(p.getDiagnostics(fileName)).toEqual([]);
 
     const lowered = lowerThunkSource(src, fileName);
-    expect(lowered.generatedText).toContain('bind(db.getUser("1234"), user =>');
-    expect(lowered.generatedText).not.toContain("bind(db, user");
+    expect(lowered.generatedText).toContain('runEffect(db.getUser("1234"))');
+    expect(lowered.generatedText).toContain(
+      "user = __resume as ThunkReturnType",
+    );
+    expect(lowered.generatedText).not.toContain("bind(");
 
     const offset = src.indexOf("const user") + "const ".length;
     const hover = hoverAtOffset(p, fileName, src, offset);

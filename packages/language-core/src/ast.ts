@@ -30,7 +30,60 @@ export type Statement =
   | ReturnStatement
   | ExpressionStatement
   | ProtocolDeclaration
-  | SymbolDeclaration;
+  | SymbolDeclaration
+  | BlockStatement
+  | IfStatement
+  | WhileStatement
+  | ForStatement
+  | BreakStatement
+  | ContinueStatement;
+
+/** `{ … }` */
+export interface BlockStatement {
+  readonly kind: "BlockStatement";
+  readonly range: Range;
+  readonly statements: Statement[];
+}
+
+/** `if (cond) then [else else]` */
+export interface IfStatement {
+  readonly kind: "IfStatement";
+  readonly range: Range;
+  readonly condition: Expression;
+  readonly consequent: Statement;
+  readonly alternate?: Statement;
+}
+
+/** `while (cond) body` */
+export interface WhileStatement {
+  readonly kind: "WhileStatement";
+  readonly range: Range;
+  readonly condition: Expression;
+  readonly body: Statement;
+}
+
+/**
+ * C-style `for (init; cond; update) body`.
+ * `init` may be a variable statement or expression statement; empty slots are omitted.
+ */
+export interface ForStatement {
+  readonly kind: "ForStatement";
+  readonly range: Range;
+  readonly initializer?: VariableStatement | ExpressionStatement;
+  readonly condition?: Expression;
+  readonly update?: Expression;
+  readonly body: Statement;
+}
+
+export interface BreakStatement {
+  readonly kind: "BreakStatement";
+  readonly range: Range;
+}
+
+export interface ContinueStatement {
+  readonly kind: "ContinueStatement";
+  readonly range: Range;
+}
 
 export interface ImportSpecifier {
   /** Local binding name (after `as` if present). */

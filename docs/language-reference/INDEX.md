@@ -3,6 +3,7 @@
 | Page | Section |
 |---|---|
 | [Bindings](./core/bindings.md) | core |
+| [Control flow](./core/control-flow.md) | core |
 | [Branding](./symbols/branding.md) | symbols |
 | [CLI](./tooling/cli.md) | tooling |
 | [Editor](./tooling/editor.md) | tooling |

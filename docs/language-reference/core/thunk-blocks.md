@@ -23,11 +23,12 @@ const DatabaseLive = Database({
 })
 ```
 
-Body statements may include ordinary bindings, nested thunks, and [`run`](./run.md) in statement position.
+Body statements may include ordinary bindings, nested thunks, [`run`](./run.md) in statement position, and [control flow](./control-flow.md) (`if` / `while` / `for` / `break` / `continue`).
 
 ## Semantics
 
-- Lowers to `defer(() => …)` with `succeed` / `bind` for control flow.
+- Pure bodies lower to `defer(() => succeed(…))`.
+- Bodies with `run` lower to `defer(() => { …; return machine(step) })` — an iterative switch-based state machine using `runEffect` / `succeed`.
 - Yield type is the type of the `return` expression (or `void`).
 - Pure thunks have an empty protocol bag → surface type `Thunk<T>`.
 - Nested `thunk { … }` inside ordinary TypeScript text (calls, objects, arrows) is still parsed and lowered — not left as raw `thunk` for TypeScript.
@@ -50,5 +51,6 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and nested usage in 
 ## Related
 
 - [run](./run.md)
+- [Control flow](./control-flow.md)
 - [Thunk type](../types/thunk-type.md)
 - [Bindings](./bindings.md)

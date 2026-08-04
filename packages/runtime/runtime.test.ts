@@ -2,7 +2,14 @@
  * Runtime API type + behavior tests.
  */
 import { describe, expect, test } from "bun:test";
-import { bind, defer, execute, succeed } from "./src/internal";
+import {
+  bind,
+  defer,
+  execute,
+  machine,
+  runEffect,
+  succeed,
+} from "./src/internal";
 import type {
   CompileError,
   ExecuteResult,
@@ -35,6 +42,52 @@ describe("@thunk/runtime", () => {
   test("bind sequences", () => {
     const t = bind(succeed(2), (n) => succeed(n * 3));
     expect(execute(t)).toBe(6);
+  });
+
+  test("machine + runEffect sequences iteratively", () => {
+    let state = 0;
+    let n: number;
+    const t = machine((resume?: any) => {
+      while (true) {
+        switch (state) {
+          case 0:
+            state = 1;
+            return runEffect(succeed(2));
+          case 1:
+            n = resume;
+            state = 2;
+            return runEffect(succeed(n * 3));
+          case 2:
+            return succeed(resume as number);
+          default:
+            throw new Error("bad state");
+        }
+      }
+    });
+    expect(execute(t)).toBe(6);
+  });
+
+  test("machine merges Requires from runEffect paths", () => {
+    type Db = "Database";
+    const withDb = succeed(1) as unknown as Thunk<number, WithRequires<Db>>;
+    let state = 0;
+    const t = machine((resume?: any) => {
+      while (true) {
+        switch (state) {
+          case 0:
+            state = 1;
+            return runEffect(withDb);
+          case 1:
+            return succeed(String(resume));
+          default:
+            throw new Error("bad state");
+        }
+      }
+    });
+    type Req = ExpectEqual<GetRequires<Protocol<typeof t>>, Db>;
+    const _m: Req = true;
+    expect(execute(t)).toBe("1");
+    expect(_m).toBe(true);
   });
 
   test("succeed returns Thunk with empty Requires", () => {

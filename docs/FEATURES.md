@@ -118,10 +118,12 @@ thunk {
 | Example | Expected |
 |---|---|
 | `const x = 1` before/after `run` | Stays in the appropriate continuation region |
-| `for` / `while` / `if` containing **no** `run` | Should work as ordinary TS text once expression/statement parsing allows (hybrid `TsExpression` / statements) |
+| `for` / `while` / `if` containing **no** `run` | Ordinary JS inside `defer` |
+| `for` / `while` / `if` / `break` / `continue` **with** `run` | State-machine transitions — see [`examples/control-flow.thunk`](../examples/control-flow.thunk) |
 | `run` inside loop condition / `finally` | **Unsupported** initially — see LANGUAGE §17.3 |
+| `try` / `catch` / `finally` | **Out of scope** for now |
 
-**Implementation notes.** `const`/`let` and expression statements work. Full CFG with `run` is deferred. Loops as opaque TS regions are only as good as the hybrid parser’s statement coverage.
+**Implementation notes.** `const`/`let`, expression statements, `if`/`else`, `while`, C-style `for`, `break`, and `continue` are parsed. With `run`, they lower through the state machine. `try`/`catch`/`finally` remain deferred.
 
 ---
 
@@ -232,27 +234,37 @@ defer(() => succeed(calculate()))
 
 ---
 
-## 2.3 `bind`
+## 2.3 `bind` (hand-written) / `runEffect` + `machine` (lowering)
 
 | | |
 |---|---|
-| **Status** | **Done** (runtime + lowering) |
-| **Milestone** | M0 · multi-`run` M2 |
+| **Status** | **Done** (runtime + state-machine lowering) |
+| **Milestone** | M0 · multi-`run` / control-flow M2 |
 
-**What it is.** Sequences: run `source`, pass value to continuation, run resulting thunk.
+**What it is.** Sequencing: run a source thunk, continue with its value. The lowerer emits an iterative state machine (`runEffect` / `machine`); `bind` remains for hand-written runtime use.
 
 **What it should look like.**
 
 ```ts
-bind(source, value => succeed(value * 2))
+// Emitted shape (simplified)
+machine(function (resume) {
+  switch (state) {
+    case 0:
+      state = 1
+      return runEffect(source)
+    case 1:
+      value = resume
+      return succeed(value * 2)
+  }
+})
 ```
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| `const x = run op` inside thunk | `bind(op, x => …remainder)` |
-| Multiple `run`s | Nested `bind`s (§3.3) |
+| `const x = run op` inside thunk | `runEffect(op)` then resume into `x` |
+| Multiple `run`s | Multiple states in one machine (§3.3) |
 
 ---
 
@@ -332,16 +344,27 @@ thunk {
 →
 
 ```ts
-defer(() =>
-  bind(random, value => succeed(value * 2)),
-)
+defer(() => {
+  let state = 0
+  let value
+  return machine(function (resume) {
+    switch (state) {
+      case 0:
+        state = 1
+        return runEffect(random)
+      case 1:
+        value = resume
+        return succeed(value * 2)
+    }
+  })
+})
 ```
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| `examples/basic.thunk` | Hover on `value` → `number`; emit contains `defer`/`bind`/`succeed` |
+| `examples/basic.thunk` | Hover on `value` → `number`; emit contains `defer`/`machine`/`runEffect`/`succeed` |
 
 ---
 
@@ -349,10 +372,10 @@ defer(() =>
 
 | | |
 |---|---|
-| **Status** | **Partial** (lowerer recurses; needs examples + tests) |
+| **Status** | **Done** (state machine; examples + surface tests) |
 | **Milestone** | **M2** |
 
-**What it is.** Each `run` introduces one `bind`; remainder becomes the continuation.
+**What it is.** Each `run` advances the state machine and suspends via `runEffect`; resume continues at the next state with hoisted locals.
 
 **What it should look like.**
 
@@ -364,15 +387,15 @@ thunk {
 }
 ```
 
-→ nested `bind(getUser(id), user => bind(getPosts(user.id), posts => succeed({ user, posts })))` inside `defer`.
+→ one `machine` with states for each `run`, not nested `bind`s.
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| Two `run`s | Two nested `bind`s; `user` in scope for second operand |
-| Three+ `run`s | Same pattern, deeper nesting |
-| Editor hover on later binding | Correct TS type from prior binds |
+| Two `run`s | Two `runEffect` sites; `user` in scope for second operand |
+| Three+ `run`s | Same pattern, more states |
+| Editor hover on later binding | Correct TS type from resume witnesses |
 
 ---
 
@@ -399,8 +422,20 @@ thunk {
 
 ```ts
 defer(() => {
-  const started = Date.now()
-  return bind(getUser(), user => succeed({ user, started }))
+  let state = 0
+  let started
+  let user
+  return machine(function (resume) {
+    switch (state) {
+      case 0:
+        started = Date.now()
+        state = 1
+        return runEffect(getUser())
+      case 1:
+        user = resume
+        return succeed({ user, started })
+    }
+  })
 })
 ```
 
@@ -409,7 +444,7 @@ defer(() => {
 | Example | Expected |
 |---|---|
 | Construct `program` without `run program` | `Date.now()` must **not** run |
-| `run program` / `execute(program)` | `Date.now()` runs once, then binds |
+| `run program` / `execute(program)` | `Date.now()` runs once, then effects |
 
 ---
 
@@ -474,7 +509,7 @@ thunk {
 |---|---|
 | `const user = run getUser()` | Supported |
 | `const user = run db.getUser(id)` | Supported (full expression operand, like `await`) |
-| `return run provide(t, layer)` | Supported → `bind(…, __v => succeed(__v))` |
+| `return run provide(t, layer)` | Supported → `runEffect(…)` then `succeed(__resume)` |
 | `return (run getUser()).name` | Unsupported — rewrite to bind then use `.name` |
 | `run` in `while (…)` condition | Unsupported |
 
@@ -501,7 +536,7 @@ thunk {
 
 ---
 
-## 4.2 `run` inside a thunk → `bind`
+## 4.2 `run` inside a thunk → state machine (`runEffect` / `machine`)
 
 | | |
 |---|---|
@@ -1056,8 +1091,9 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Actor systems | Later |
 | Effect tracking beyond `Requires` | Later |
 | Advanced protocol interoperability | Later |
-| `run` in arbitrary expressions / full CFG | After solid statement-position lowering |
-| Iterative executor (stack) | Runtime polish after recursive prototype |
+| `run` in arbitrary expressions / full CFG | After solid statement-position machine; ANF for expr `run` |
+| `try` / `catch` / `finally` in thunks | Separate design (handler/finalizer state) |
+| Iterative executor (stack) | Largely addressed by machine lowering; further polish optional |
 | Disk `.map` sourcemaps for emit | Optional tooling |
 | `.th.ts` alternate extension | Open; not required |
 
@@ -1072,9 +1108,9 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Ordinary statements (basic) | Partial | M0+ |
 | Hybrid TS expressions | Partial | M0+ |
 | `Thunk<T>` surface typing | Done (carrier + hover) | Typed core |
-| `succeed` / `defer` / `bind` / `execute` runtime | Done (returns `Thunk`) | M0 / typed core |
-| Single-`run` lowering | Done | M0 |
-| Multi-`run` lowering | Partial | **M2** |
+| `succeed` / `defer` / `runEffect` / `machine` / `execute` runtime | Done (`bind` kept for hand-written) | M0 / typed core |
+| Single-`run` lowering | Done (state machine) | M0 |
+| Multi-`run` lowering | Done (state machine) | **M2** |
 | Code before / between `run` | Partial | **M2** |
 | Lexical capture | Partial | M2 |
 | `run` statement-position only | Done (restriction) | M0 |

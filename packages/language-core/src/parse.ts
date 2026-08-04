@@ -7,6 +7,7 @@
 
 import type {
   Expression,
+  ExpressionStatement,
   Identifier,
   ImportDeclaration,
   ImportSpecifier,
@@ -20,6 +21,7 @@ import type {
   TsExpression,
   TsExpressionPart,
   TypeAnnotation,
+  VariableStatement,
 } from "./ast";
 import { offsetToPosition, positionToOffset, type Range } from "./source-map";
 
@@ -70,6 +72,40 @@ class Parser {
       return this.parseSymbolDeclaration(start);
     }
 
+    if (this.peek() === "{") {
+      return this.parseBlockStatement(start);
+    }
+
+    if (this.peekKeyword("if")) {
+      return this.parseIfStatement(start);
+    }
+
+    if (this.peekKeyword("while")) {
+      return this.parseWhileStatement(start);
+    }
+
+    if (this.peekKeyword("for")) {
+      return this.parseForStatement(start);
+    }
+
+    if (this.peekKeyword("break")) {
+      this.matchKeyword("break");
+      this.expectSemiOrNewline();
+      return {
+        kind: "BreakStatement",
+        range: this.range(start, this.pos),
+      };
+    }
+
+    if (this.peekKeyword("continue")) {
+      this.matchKeyword("continue");
+      this.expectSemiOrNewline();
+      return {
+        kind: "ContinueStatement",
+        range: this.range(start, this.pos),
+      };
+    }
+
     if (this.peekKeyword("return")) {
       this.matchKeyword("return");
       this.skipTrivia();
@@ -83,30 +119,7 @@ class Parser {
     }
 
     if (this.peekKeyword("const") || this.peekKeyword("let")) {
-      const declarationKind = this.peekKeyword("const") ? "const" : "let";
-      this.matchKeyword(declarationKind);
-      this.skipTrivia();
-      const name = this.parseIdentifier();
-      this.skipTrivia();
-      let typeAnnotation: TypeAnnotation | undefined;
-      if (this.peek() === ":") {
-        this.pos++;
-        this.skipTrivia();
-        typeAnnotation = this.parseTypeAnnotation();
-        this.skipTrivia();
-      }
-      this.expect("=");
-      this.skipTrivia();
-      const initializer = this.parseExpression();
-      this.expectSemiOrNewline();
-      return {
-        kind: "VariableStatement",
-        range: this.range(start, this.pos),
-        declarationKind,
-        name,
-        typeAnnotation,
-        initializer,
-      };
+      return this.parseVariableStatement(start);
     }
 
     const expression = this.parseExpression();
@@ -115,6 +128,150 @@ class Parser {
       kind: "ExpressionStatement",
       range: this.range(start, this.pos),
       expression,
+    };
+  }
+
+  private parseBlockStatement(start: number): Statement {
+    this.expect("{");
+    this.skipTrivia();
+    const statements: Statement[] = [];
+    while (!this.eof() && this.peek() !== "}") {
+      statements.push(this.parseStatement());
+      this.skipTrivia();
+    }
+    this.expect("}");
+    return {
+      kind: "BlockStatement",
+      range: this.range(start, this.pos),
+      statements,
+    };
+  }
+
+  private parseIfStatement(start: number): Statement {
+    this.matchKeyword("if");
+    this.skipTrivia();
+    this.expect("(");
+    this.skipTrivia();
+    const condition = this.parseExpression();
+    this.skipTrivia();
+    this.expect(")");
+    this.skipTrivia();
+    const consequent = this.parseStatement();
+    this.skipTrivia();
+    let alternate: Statement | undefined;
+    if (this.peekKeyword("else")) {
+      this.matchKeyword("else");
+      this.skipTrivia();
+      alternate = this.parseStatement();
+    }
+    return {
+      kind: "IfStatement",
+      range: this.range(start, this.pos),
+      condition,
+      consequent,
+      alternate,
+    };
+  }
+
+  private parseWhileStatement(start: number): Statement {
+    this.matchKeyword("while");
+    this.skipTrivia();
+    this.expect("(");
+    this.skipTrivia();
+    const condition = this.parseExpression();
+    this.skipTrivia();
+    this.expect(")");
+    this.skipTrivia();
+    const body = this.parseStatement();
+    return {
+      kind: "WhileStatement",
+      range: this.range(start, this.pos),
+      condition,
+      body,
+    };
+  }
+
+  private parseForStatement(start: number): Statement {
+    this.matchKeyword("for");
+    this.skipTrivia();
+    this.expect("(");
+    this.skipTrivia();
+
+    let initializer: VariableStatement | ExpressionStatement | undefined;
+    if (this.peek() !== ";") {
+      if (this.peekKeyword("const") || this.peekKeyword("let")) {
+        initializer = this.parseVariableStatement(this.pos, /*inFor*/ true);
+      } else {
+        const exprStart = this.pos;
+        const expression = this.parseExpression();
+        initializer = {
+          kind: "ExpressionStatement",
+          range: this.range(exprStart, this.pos),
+          expression,
+        };
+      }
+    }
+    this.skipTrivia();
+    this.expect(";");
+    this.skipTrivia();
+
+    let condition: Expression | undefined;
+    if (this.peek() !== ";") {
+      condition = this.parseExpression();
+      this.skipTrivia();
+    }
+    this.expect(";");
+    this.skipTrivia();
+
+    let update: Expression | undefined;
+    if (this.peek() !== ")") {
+      update = this.parseExpression();
+      this.skipTrivia();
+    }
+    this.expect(")");
+    this.skipTrivia();
+    const body = this.parseStatement();
+
+    return {
+      kind: "ForStatement",
+      range: this.range(start, this.pos),
+      initializer,
+      condition,
+      update,
+      body,
+    };
+  }
+
+  /** Variable statement; when `inFor`, stop after initializer (caller consumes `;`). */
+  private parseVariableStatement(
+    start: number,
+    inFor = false,
+  ): VariableStatement {
+    const declarationKind = this.peekKeyword("const") ? "const" : "let";
+    this.matchKeyword(declarationKind);
+    this.skipTrivia();
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+    let typeAnnotation: TypeAnnotation | undefined;
+    if (this.peek() === ":") {
+      this.pos++;
+      this.skipTrivia();
+      typeAnnotation = this.parseTypeAnnotation();
+      this.skipTrivia();
+    }
+    this.expect("=");
+    this.skipTrivia();
+    const initializer = this.parseExpression();
+    if (!inFor) {
+      this.expectSemiOrNewline();
+    }
+    return {
+      kind: "VariableStatement",
+      range: this.range(start, this.pos),
+      declarationKind,
+      name,
+      typeAnnotation,
+      initializer,
     };
   }
 
@@ -816,6 +973,17 @@ class Parser {
       if (c === "/" && this.text[this.pos + 1] === "/") {
         this.pos += 2;
         while (!this.eof() && this.peek() !== "\n") this.pos++;
+        continue;
+      }
+      if (c === "/" && this.text[this.pos + 1] === "*") {
+        this.pos += 2;
+        while (!this.eof()) {
+          if (this.peek() === "*" && this.text[this.pos + 1] === "/") {
+            this.pos += 2;
+            break;
+          }
+          this.pos++;
+        }
         continue;
       }
       break;
