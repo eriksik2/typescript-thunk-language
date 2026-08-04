@@ -31,8 +31,9 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ```bash
 bun install
-bun run proof:hover    # hover: Thunk<number> + run binding number
-bun run test           # core + types + runtime + language-service
+bun run proof:hover      # hover: Thunk<number> + run binding number
+bun run proof:requires   # symbol + Requires(Database) surface hover
+bun run test             # core + types + runtime + language-service
 bun run thunk -- build examples/basic.thunk
 bun run thunk -- build examples/requires.thunk   # symbol + use / provide
 bun run thunk -- build examples/symbols.thunk    # branding

@@ -155,6 +155,8 @@ Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires
 
 **Symbol encoding:** each `symbol Name = T` / `symbol Name { … }` lowers to a unique brand type (`T & { [__brand_Name]: … } & { __assoc: T }`) plus a callable const from `__makeSymbol` cast so `typeof Name` exposes `__assoc` for `SymbolType`. `Requires` bag keys are `typeof Name` (symbol identities).
 
+**Hover pretty-print:** must tolerate TypeScript-expanded `typeof` identities (callables with `=>`) inside Requires bags — `findThunkTypeSpan` is paren/brace aware and skips `=>`. Surface integration tests live under `packages/language-service/surface-*.test.ts` (`bun run proof:requires`).
+
 ---
 
 ## 6. Runtime vs types

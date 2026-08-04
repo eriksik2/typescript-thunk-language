@@ -104,23 +104,32 @@ class Emitter {
 
   private emitSymbolDeclaration(decl: SymbolDeclaration): void {
     const name = decl.name.name;
-    const assoc =
-      decl.associatedType.form === "object"
-        ? decl.associatedType.text
-        : decl.associatedType.text;
+    const assoc = decl.associatedType.text;
     const brand = `__brand_${name}`;
 
-    this.writeMapped(`declare const ${brand}: unique symbol;\n`, decl.range);
-    this.writeMapped(
-      `type ${name} = ${assoc} & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: ${assoc} };\n`,
-      decl.name.range,
+    this.write(`declare const ${brand}: unique symbol;\n`);
+
+    this.write("type ");
+    this.writeMapped(name, decl.name.range);
+    this.write(" = ");
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(
+      ` & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
     );
-    this.writeMapped(
-      `const ${name} = __makeSymbol<${assoc}>(${JSON.stringify(name)}) as unknown as ` +
-        `((value: ${assoc}) => ${name}) & ` +
-        `{ readonly key: symbol; readonly __assoc: ${assoc} };\n`,
-      decl.name.range,
-    );
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(" };\n");
+
+    this.write("const ");
+    this.writeMapped(name, decl.name.range);
+    this.write(" = __makeSymbol<");
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(`>(${JSON.stringify(name)}) as unknown as ((value: `);
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(") => ");
+    this.writeMapped(name, decl.name.range);
+    this.write(") & { readonly key: symbol; readonly __assoc: ");
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(" };\n");
     this.write("\n");
   }
 

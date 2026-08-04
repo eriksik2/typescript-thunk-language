@@ -3,21 +3,21 @@
  */
 
 import type { Hover, MarkedString, MarkupContent } from "vscode-languageserver-protocol";
-import { formatThunkDisplayString } from "./format-thunk-type";
+import { formatHoverDisplayString } from "./format-thunk-type";
 
 function prettyMarkedString(content: MarkedString): MarkedString {
   if (typeof content === "string") {
-    return formatThunkDisplayString(content);
+    return formatHoverDisplayString(content);
   }
   return {
     ...content,
-    value: formatThunkDisplayString(content.value),
+    value: formatHoverDisplayString(content.value),
   };
 }
 
 function prettyMarkup(contents: MarkupContent | MarkedString | MarkedString[]): typeof contents {
   if (typeof contents === "string") {
-    return formatThunkDisplayString(contents);
+    return formatHoverDisplayString(contents);
   }
   if (Array.isArray(contents)) {
     return contents.map(prettyMarkedString);
@@ -25,13 +25,13 @@ function prettyMarkup(contents: MarkupContent | MarkedString | MarkedString[]): 
   if ("kind" in contents) {
     return {
       ...contents,
-      value: formatThunkDisplayString(contents.value),
+      value: formatHoverDisplayString(contents.value),
     };
   }
   return prettyMarkedString(contents as MarkedString);
 }
 
-/** Apply Thunk pretty-printing to a hover result (in place shape preserved). */
+/** Apply Thunk / symbol pretty-printing to a hover result (in place shape preserved). */
 export function prettyPrintThunkHover(hover: Hover): Hover {
   return {
     ...hover,

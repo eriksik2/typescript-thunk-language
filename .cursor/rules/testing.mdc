@@ -1,0 +1,54 @@
+---
+description: Surface-first testing discipline for Thunk language features
+alwaysApply: true
+---
+
+# Testing discipline (Thunk)
+
+Every language-surface change must be proven by tests that assert **what the user sees**, not only internals.
+
+## Surface-first
+
+For each user-visible feature, add at least one test that checks the **surface** string or behavior:
+
+- Hover / quick-info display text
+- Diagnostics messages
+- Parse AST kind for new syntax
+- Lowered emit snippets when they are part of the contract
+- Source-map round-trips for identifiers users click/hover
+
+Do **not** ship with only unit tests of helpers if the editor path is untested.
+
+## Matrix per feature
+
+When adding or changing a feature, cover this pipeline (as applicable):
+
+1. **Parse** — AST shape for new syntax
+2. **Lower** — expected emit fragments + identifier mappings (not whole-line maps onto a short name)
+3. **Typecheck** — `createThunkProject` diagnostics empty (or expected errors)
+4. **Hover / pretty** — `hoverAtOffset` / `formatHoverDisplayString` assert surface form
+5. **Mappings** — each character of a hovered name maps into the generated identifier token
+6. **Example + docs** — update `examples/*.thunk` and FEATURES/LANGUAGE when behavior is user-facing
+
+## Regression template
+
+When a bug appears in the editor:
+
+1. Capture the `.thunk` repro (prefer the example file or an inline copy).
+2. Add a failing `createThunkProject` + `hoverAtOffset` / mapping test under `packages/language-service/surface-*.test.ts` (or extend an existing surface file).
+3. Fix until that test is green.
+4. Prefer asserting **forbidden** substrings too (`__brand_`, `__assoc`, `Protocols(`, `EmptyProtocols`, raw `=>` in Requires hover).
+
+## Definition of done
+
+Before considering work complete:
+
+- `bun run test` green
+- Relevant `proof:*` scripts green (`proof:hover`, `proof:requires`, …)
+- Asserted hovers contain **no** raw encoding noise (`__brand_`, `__makeSymbol`, `Protocols(`, `createTag` in examples)
+
+## Do not ship without
+
+Language-surface changes (syntax, lowering, types shown in hover, Requires pretty-print, symbol branding) require at least one **integration** hover or diagnostic assertion on a `.thunk` snippet.
+
+Unit tests for pretty-printer edge cases (`=>` inside `Thunk<…>` bags, expanded `typeof` identities) live in `packages/language-service/format-thunk-type.test.ts`.

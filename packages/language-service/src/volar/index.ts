@@ -5,10 +5,13 @@ export {
 } from "./language";
 export { createThunkParseService } from "./service";
 export {
+  formatHoverDisplayString,
+  formatSymbolDisplayString,
   formatThunkDisplayString,
   formatThunkType,
   findThunkTypeSpan,
   parseProtocolBag,
+  prettyRequiresPayload,
   splitTopLevelArgs,
 } from "./format-thunk-type";
 export { prettyPrintThunkHover } from "./pretty-hover";

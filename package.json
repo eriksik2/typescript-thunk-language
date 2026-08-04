@@ -4,6 +4,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "proof:hover": "bun run scripts/proof-hover.ts",
+    "proof:requires": "bun run scripts/proof-requires-hover.ts",
     "test:core": "bun test packages/language-core",
     "test:types": "bun test packages/types packages/runtime",
     "test:ls": "bun test packages/language-service",

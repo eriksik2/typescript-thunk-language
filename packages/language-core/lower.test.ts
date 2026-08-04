@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseThunkSource, lowerThunkSource } from "./src/index";
+import {
+  lowerThunkSource,
+  offsetToPosition,
+  originalToGenerated,
+  parseThunkSource,
+  positionToOffset,
+} from "./src/index";
 
 describe("parse", () => {
   test("parses thunk + run", () => {
@@ -75,5 +81,37 @@ const fetchUser = thunk {
     expect(lowered.generatedText).toContain("__makeSymbol");
     expect(lowered.generatedText).toContain("use(Database)");
     expect(lowered.generatedText).toContain("type Database =");
+  });
+
+  test("symbol name mappings land on generated Database identifier", () => {
+    const source = `symbol Database {
+  name: string
+}
+`;
+    const lowered = lowerThunkSource(source, "sym.thunk");
+    const nameOffset = source.indexOf("Database");
+    for (let i = 0; i < "Database".length; i++) {
+      const gen = originalToGenerated(
+        lowered.sourceMap,
+        offsetToPosition(source, nameOffset + i),
+      );
+      expect(gen).toBeDefined();
+      const off = positionToOffset(lowered.generatedText, gen!);
+      let start = off;
+      while (
+        start > 0 &&
+        /[A-Za-z_]/.test(lowered.generatedText[start - 1]!)
+      ) {
+        start--;
+      }
+      let end = off;
+      while (
+        end < lowered.generatedText.length &&
+        /[A-Za-z_]/.test(lowered.generatedText[end]!)
+      ) {
+        end++;
+      }
+      expect(lowered.generatedText.slice(start, end)).toBe("Database");
+    }
   });
 });
