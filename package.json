@@ -1,10 +1,13 @@
 {
-  "name": "typescript-effect-language",
+  "name": "typescript-thunk-language",
   "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "proof:hover": "bun run scripts/proof-hover.ts",
+    "test:core": "bun test packages/language-core"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.2"
   }
 }
