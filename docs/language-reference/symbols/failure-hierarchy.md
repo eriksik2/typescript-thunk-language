@@ -42,7 +42,7 @@ Symbol.to(d, Failure)    // Failure-shaped view; of(d) still Defect
 
 Importing `Error` shadows the platform `Error` constructor in that scope — use `globalThis.Error` when you need it.
 
-Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred. `wrap` rejection → `UnhandledError` is the bare-minimum bridge.
+Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred. Value-level [`Result`](../types/result.md) + [`match`](../core/match.md) cover closed error unions today. `wrap` rejection → `UnhandledError` is the bare-minimum async bridge.
 
 ## Examples
 

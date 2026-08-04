@@ -1123,7 +1123,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 
 | Feature | Notes |
 |---|---|
-| Typed error channels / error handling semantics | Later protocol or ops; Failure tree + `UnhandledError` from `wrap` are the bare minimum |
+| Typed error channels / error handling semantics | Fail **protocol** still later; **Result values + match v1** shipped; Failure tree + `wrap` → `UnhandledError` |
 | Cancellation | Later |
 | Asynchronous execution | **Partial** — `Async` + `wrap` + async `execute` |
 | Concurrency / parallel composition | Later |
@@ -1158,6 +1158,9 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Nested `run` expressions | Done (ANF) | **M2** |
 | Pipe `\|` | Done | **M2** |
 | Pipe + `run` precedence | Done | **M2** |
+| `match` (exact leaf + exhaustiveness) | Done (v1) | **M2** |
+| `Result` / `Ok` / `Err` | Done (values) | **M2** |
+| Generic `symbol Name<A>` | Done | **M2** |
 | Postfix protocol syntax | Done | M3 |
 | Protocol normalization / inference | Done (`Requires`) | M3 |
 | `protocol` declarations | Partial (aliases emitted) | M3 |
@@ -1166,6 +1169,6 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
-| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure tree) | later |
+| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure; **Result+match**) | later |
 
-**Next implementation focus:** deepen `protocol` decls so generated type functions drive merge instead of hard-coded `Requires` only; typed failure channel + match.
+**Next implementation focus:** deepen `protocol` decls; typed Fail protocol on thunks (optional next after Result values); match v2 (literals / guards).

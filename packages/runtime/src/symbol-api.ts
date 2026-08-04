@@ -25,8 +25,11 @@ export function symbolOf<V>(value: V): SymbolOfValue<V> {
   return ofIdentity(value);
 }
 
-/** Exact: `Symbol.of(value) === sym`. */
-export function symbolIs(value: unknown, sym: ThunkSymbol<any>): boolean {
+/** Exact: `Symbol.of(value) === sym`. Type predicate for match narrowing. */
+export function symbolIs<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+): value is Extract<V, { readonly __symbolIdentity?: S }> {
   return isExact(value, sym);
 }
 

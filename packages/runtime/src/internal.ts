@@ -169,6 +169,8 @@ export function __makeSymbol<T>(
 
 /** Well-known property + WeakMap so branded objects remember their identity. */
 const IDENTITY_PROP = globalThis.Symbol.for("@thunk/runtime.symbolIdentity");
+/** Payload slot for boxed primitives (and null/undefined). */
+const PAYLOAD_PROP = globalThis.Symbol.for("@thunk/runtime.symbolPayload");
 const identityByRef = new WeakMap<object, ThunkSymbol<any>>();
 
 function stampIdentity<T>(value: T, identity: ThunkSymbol<any>): T {
@@ -184,10 +186,68 @@ function stampIdentity<T>(value: T, identity: ThunkSymbol<any>): T {
     } catch {
       // frozen / sealed — WeakMap is enough
     }
+    return value;
   }
-  // Primitives stay naked so `Age` → `number` assignability holds;
-  // `Symbol.of` / branded `provide` require object inhabitants.
+
+  if (typeof value === "function") {
+    identityByRef.set(value as object, identity);
+    try {
+      Object.defineProperty(value, IDENTITY_PROP, {
+        value: identity,
+        enumerable: false,
+        configurable: true,
+        writable: false,
+      });
+    } catch {
+      // ignore
+    }
+    return value;
+  }
+
+  // Primitives / null / undefined: box so Symbol.is / match retain identity.
+  // Type stays `T & Brand`; runtime is a stamped wrapper (Object(primitive)
+  // for number/string/boolean so valueOf coercion still works).
+  const box =
+    value === null || value === undefined
+      ? ({ [PAYLOAD_PROP]: value } as object)
+      : Object(value);
+  identityByRef.set(box, identity);
+  try {
+    Object.defineProperty(box, IDENTITY_PROP, {
+      value: identity,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
+    Object.defineProperty(box, PAYLOAD_PROP, {
+      value,
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
+  } catch {
+    // ignore
+  }
+  return box as T;
+}
+
+/**
+ * Associated payload for match bindings.
+ * Object brands: the value itself. Boxed primitives: the original payload.
+ */
+export function __symbolPayload<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    const payload = (value as Record<symbol, unknown>)[PAYLOAD_PROP];
+    if (payload !== undefined || PAYLOAD_PROP in (value as object)) {
+      return payload as T;
+    }
+  }
   return value;
+}
+
+/** Exhaustiveness witness for `match` — remainder must be `never`. */
+export function __exhaustive(_value: never): never {
+  throw new Error("non-exhaustive match");
 }
 
 function readIdentity(value: unknown): ThunkSymbol<any> | undefined {
@@ -198,6 +258,10 @@ function readIdentity(value: unknown): ThunkSymbol<any> | undefined {
     if (fromProp && typeof fromProp === "object") {
       return fromProp as ThunkSymbol<any>;
     }
+  }
+  if (typeof value === "function") {
+    const fromMap = identityByRef.get(value);
+    if (fromMap) return fromMap;
   }
   return undefined;
 }
@@ -223,7 +287,7 @@ export function symbolOf<V>(value: V): SymbolOfValue<V> {
   const id = readIdentity(value);
   if (!id) {
     throw new Error(
-      "Symbol.of: value is not a branded symbol inhabitant (object values branded via Name(...) carry identity; use layerOf for primitives)",
+      "Symbol.of: value is not a branded symbol inhabitant (brand with Name(...))",
     );
   }
   return id as SymbolOfValue<V>;
@@ -231,8 +295,12 @@ export function symbolOf<V>(value: V): SymbolOfValue<V> {
 
 /**
  * Exact identity test: true only when `Symbol.of(value) === sym`.
+ * Type predicate narrows to the leaf branded with `sym` (for `match` exhaustiveness).
  */
-export function symbolIs(value: unknown, sym: ThunkSymbol<any>): boolean {
+export function symbolIs<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+): value is Extract<V, { readonly __symbolIdentity?: S }> {
   const id = readIdentity(value);
   return id === sym;
 }

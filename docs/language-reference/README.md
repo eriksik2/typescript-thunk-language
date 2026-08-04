@@ -12,7 +12,7 @@ Prefer this folder when you need **how a feature works**.
 | I want… | Go to |
 |---|---|
 | Overview of the language | [Core concepts](./core/README.md) |
-| `thunk { }` / `run` / `\|` | [Thunk blocks](./core/thunk-blocks.md), [run](./core/run.md), [pipe](./core/pipe.md) |
+| `thunk { }` / `run` / `\|` / `match` | [Thunk blocks](./core/thunk-blocks.md), [run](./core/run.md), [pipe](./core/pipe.md), [match](./core/match.md) |
 | `Thunk<T>` types & protocols | [Types](./types/README.md) |
 | `symbol` / branding / `Symbol.of` | [Symbols](./symbols/README.md) |
 | `use` / `provide` / layers | [Environment](./environment/README.md) |
@@ -22,7 +22,7 @@ Prefer this folder when you need **how a feature works**.
 
 ## Sections
 
-- [**core/**](./core/README.md) — syntax kernel (`thunk`, `run`, `|`, bindings)
+- [**core/**](./core/README.md) — syntax kernel (`thunk`, `run`, `|`, `match`, bindings)
 - [**types/**](./types/README.md) — `Thunk<T>`, protocols, `Requires`
 - [**symbols/**](./symbols/README.md) — `symbol` declarations, branding, `Symbol.of`
 - [**environment/**](./environment/README.md) — `use`, `provide`, layers
@@ -35,6 +35,7 @@ Prefer this folder when you need **how a feature works**.
 |---|---|
 | [`examples/basic.thunk`](../../examples/basic.thunk) | `thunk` / `run` |
 | [`examples/pipe.thunk`](../../examples/pipe.thunk) | `\|` pipe + expr-position `run` |
+| [`examples/match.thunk`](../../examples/match.thunk) | `match` / Result / Option / error union |
 | [`examples/symbols.thunk`](../../examples/symbols.thunk) | branding |
 | [`examples/symbols-hierarchy.thunk`](../../examples/symbols-hierarchy.thunk) | `abstract` / `extends` |
 | [`examples/failures.thunk`](../../examples/failures.thunk) | built-in Failure tree + `Symbol.is` |

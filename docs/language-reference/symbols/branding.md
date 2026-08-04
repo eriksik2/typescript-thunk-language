@@ -16,14 +16,19 @@ symbol Database { name: string }
 const DatabaseLive = Database({ name: "live" })
 ```
 
-## Identity retention (objects)
+## Identity retention
 
-For **object** (and function) values, branding **stamps** the symbol identity onto the value. That enables:
+Branding **stamps** the symbol identity onto the value so [`Symbol.of`](./symbol-of.md) / [`match`](../core/match.md) / [`provide`](../environment/provide.md) work:
 
-- [`Symbol.of(DatabaseLive)`](./symbol-of.md) → `Database`
-- [`provide(thunk, DatabaseLive)`](../environment/provide.md) without `layerOf`
+- **Objects / functions** — stamped in place.
+- **Primitives** — boxed (e.g. `Object(30)` plus a payload slot) so identity is retained while the type stays `T & Brand`. Match bindings unwrap via `__symbolPayload`.
 
-Primitives (`Age(30)`) stay naked so `Age` → `number` assignability holds; use [`layerOf`](../environment/layer.md) when providing primitive services.
+```ts
+symbol Age = number
+const a: Age = Age(30)
+const n: number = a   // ok at the type level
+Symbol.is(a, Age)     // true (boxed)
+```
 
 ## Abstract symbols
 

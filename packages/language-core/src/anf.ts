@@ -190,6 +190,7 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
     case "ImportDeclaration":
     case "ProtocolDeclaration":
     case "SymbolDeclaration":
+    case "TypeAliasDeclaration":
       return [...lifted, stmt];
   }
 }
@@ -207,6 +208,11 @@ function expressionContainsRun(expr: Expression): boolean {
       return (
         expressionContainsRun(expr.left) ||
         expressionContainsRun(expr.right)
+      );
+    case "MatchExpression":
+      return (
+        expressionContainsRun(expr.scrutinee) ||
+        expr.arms.some((a) => expressionContainsRun(a.expression))
       );
     case "ThunkExpression":
       return false;
@@ -229,6 +235,8 @@ function conditionText(expr: Expression): string {
       return `run ${conditionText(expr.expression)}`;
     case "PipeExpression":
       return `(${conditionText(expr.left)} | ${conditionText(expr.right)})`;
+    case "MatchExpression":
+      return `match (…)`;
     case "ThunkExpression":
       return "thunk { … }";
   }
@@ -266,6 +274,12 @@ function liftRuns(
         ...expr,
         left: liftRuns(expr.left, false, lifted, ctx),
         right: liftRuns(expr.right, false, lifted, ctx),
+      };
+    case "MatchExpression":
+      // Lift only the scrutinee. Arms must not contain `run` (v1).
+      return {
+        ...expr,
+        scrutinee: liftRuns(expr.scrutinee, false, lifted, ctx),
       };
     case "ThunkExpression":
       return expr;
