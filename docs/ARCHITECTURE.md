@@ -95,7 +95,7 @@ TypeScript is the host type system. Thunk owns protocol-bag normalization and th
 - CLI emit sharing `language-core`.
 - `language-core` stays free of VS Code APIs.
 
-**Next (M2 — language growth):** pipes, multi-`run`, defer placement. Then protocols (M3) and `use`/`provide` (M4). See §9 and `LANGUAGE.md`.
+**Next (M2 — language growth):** pipes (**done**) + ANF expr `run` (**done**); harden multi-`run` / defer placement. Then protocols polish (M3) and further env ergonomics. See §9 and `LANGUAGE.md`.
 
 Do **not** start with a TypeScript fork or a bespoke type checker.
 Do **not** skip to protocols / `use`/`provide` before M2 hardening of multi-`run` lowering.
@@ -303,12 +303,12 @@ Goal (achieved): open `examples/basic.thunk`, see types and diagnostics, and com
 
 **Exit criterion:** a developer can feel the language in the editor without running `proof:hover`.
 
-### M2 — Pipe + multi-`run` + `defer` placement ← **next**
+### M2 — Pipe + multi-`run` + `defer` placement ← **partial**
 
 See `LANGUAGE.md` §§6–8. Grow the M0 lowerer/parser without protocols yet.
 
-- Pipe syntax and precedence with `run` (`run tx | f` → `run (tx | f)`).
-- Multiple sequential `run`s and ordinary statements between them.
+- **Done:** Pipe syntax and precedence with `run` (`run tx | f` → `run (tx | f)`); expression-position `run` via ANF.
+- Multiple sequential `run`s and ordinary statements between them (largely done via machine).
 - Eager-vs-deferred correctness for code before first `run` (already partially in M0; harden + test).
 
 ### M3 — Protocol bag encoding + `Requires`

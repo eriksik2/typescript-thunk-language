@@ -18,6 +18,7 @@ import type {
   TypeAnnotation,
   VariableStatement,
 } from "./ast";
+import { normalizeAnf } from "./anf";
 import { parseThunkSource } from "./parse";
 import { encodeThunkTypeAnnotation } from "./protocol-encode";
 import type { Mapping, Range, SourceMap } from "./source-map";
@@ -446,7 +447,8 @@ class Emitter {
     }
     this.write("\n");
 
-    for (const stmt of rest) {
+    const anfRest = normalizeAnf(rest);
+    for (const stmt of anfRest) {
       this.emitTopLevelStatement(stmt);
     }
 
@@ -669,11 +671,12 @@ class Emitter {
   }
 
   private emitThunkBody(body: Statement[]): void {
-    if (!bodyContainsRun(body)) {
-      this.emitPureBody(body);
+    const normalized = normalizeAnf(body);
+    if (!bodyContainsRun(normalized)) {
+      this.emitPureBody(normalized);
       return;
     }
-    this.emitStateMachine(body);
+    this.emitStateMachine(normalized);
   }
 
   private emitStateMachine(body: Statement[]): void {
@@ -954,12 +957,53 @@ class Emitter {
       case "ThunkExpression":
         this.emitThunk(expr);
         return;
+      case "PipeExpression":
+        this.emitPipeExpression(expr);
+        return;
       case "RunExpression":
+        // After ANF, nested run should not appear in value position inside
+        // thunks; top-level / fallback peels via execute.
         this.write("execute(");
         this.emitValueExpression(expr.expression);
         this.write(")");
         return;
     }
+  }
+
+  /**
+   * `left | right` → `right(left)` or `callee(left, args…)` when right is a call.
+   */
+  private emitPipeExpression(expr: {
+    readonly left: Expression;
+    readonly right: Expression;
+  }): void {
+    const rightText = expressionText(expr.right);
+    const call = splitTrailingCall(rightText);
+    if (call) {
+      this.write(call.callee.trim());
+      this.write("(");
+      this.emitValueExpression(expr.left);
+      if (call.args.trim()) {
+        this.write(", ");
+        this.write(call.args.trim());
+      }
+      this.write(")");
+      return;
+    }
+    // Non-call RHS: treat as callee expression
+    if (expr.right.kind === "TsExpression" || expr.right.kind === "Identifier") {
+      this.emitValueExpression(expr.right);
+      this.write("(");
+      this.emitValueExpression(expr.left);
+      this.write(")");
+      return;
+    }
+    // Fallback: wrap complex RHS
+    this.write("(");
+    this.emitValueExpression(expr.right);
+    this.write(")(");
+    this.emitValueExpression(expr.left);
+    this.write(")");
   }
 
   private write(text: string): void {
@@ -1101,6 +1145,8 @@ function exprHasRun(expr: Expression): boolean {
   switch (expr.kind) {
     case "RunExpression":
       return true;
+    case "PipeExpression":
+      return exprHasRun(expr.left) || exprHasRun(expr.right);
     case "ThunkExpression":
       return bodyContainsRun(expr.body);
     case "TsExpression":
@@ -1110,6 +1156,47 @@ function exprHasRun(expr: Expression): boolean {
     case "Identifier":
       return false;
   }
+}
+
+/** Best-effort source text for pipe RHS splitting. */
+function expressionText(expr: Expression): string {
+  switch (expr.kind) {
+    case "Identifier":
+      return expr.name;
+    case "TsExpression":
+      return expr.text;
+    case "PipeExpression":
+      return `${expressionText(expr.left)} | ${expressionText(expr.right)}`;
+    case "RunExpression":
+      return `run ${expressionText(expr.expression)}`;
+    case "ThunkExpression":
+      return "thunk { … }";
+  }
+}
+
+/**
+ * If `text` is a call `callee(…)`, split callee and args (final paren pair).
+ */
+function splitTrailingCall(
+  text: string,
+): { callee: string; args: string } | null {
+  const t = text.trim();
+  if (!t.endsWith(")")) return null;
+  let depth = 0;
+  for (let i = t.length - 1; i >= 0; i--) {
+    const c = t[i]!;
+    if (c === ")") depth++;
+    else if (c === "(") {
+      depth--;
+      if (depth === 0) {
+        const callee = t.slice(0, i);
+        const args = t.slice(i + 1, -1);
+        if (!callee.trim()) return null;
+        return { callee, args };
+      }
+    }
+  }
+  return null;
 }
 
 function fileNeedsTypesImport(ast: SourceFile): {

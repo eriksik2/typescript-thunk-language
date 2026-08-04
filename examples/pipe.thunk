@@ -1,0 +1,21 @@
+const double = (n: number) => n * 2
+const add = (n: number, m: number) => n + m
+
+const tx = thunk {
+  return 10
+}
+
+const flatten = (inner: typeof tx, _depth: number) => inner
+
+const getUser = thunk {
+  return { name: "ada" }
+}
+
+const program = thunk {
+  // Pipe binds tighter than run: run (tx | flatten(1))
+  const v = run tx | flatten(1)
+  const name = (run getUser).name
+  // First-arg call sugar
+  const n = 21 | double | add(1)
+  return { v, name, n }
+}

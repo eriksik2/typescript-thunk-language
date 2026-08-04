@@ -11,6 +11,7 @@
 | [Failure hierarchy](./symbols/failure-hierarchy.md) | symbols |
 | [Imports](./modules/imports.md) | modules |
 | [Layer](./environment/layer.md) | environment |
+| [Pipe](./core/pipe.md) | core |
 | [Provide](./environment/provide.md) | environment |
 | [Protocols overview](./types/protocols-overview.md) | types |
 | [Requires](./types/requires.md) | types |

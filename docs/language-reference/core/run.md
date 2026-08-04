@@ -8,6 +8,7 @@
 |---|---|
 | Inside a `thunk` body (statement) | Suspend the state machine: run the operand, resume with its value |
 | `return run expr` | Suspend, then succeed with the resumed value |
+| Expression position | ANF: lift to `const __rN = run …`, then use `__rN` |
 | Top level | Execute a thunk to a value (`execute`) |
 
 ## Syntax
@@ -16,10 +17,11 @@
 const value = run someThunk
 const user = run db.getUser("1234")   // full expression operand
 return run provide(fetchUser, db)
+return (run getUser).name             // expression-position → ANF
 run program
 ```
 
-The operand is a **full expression** (identifier, call, member access, nested `thunk { … }`, …) — same idea as `await expr`.
+The operand is a **full expression** (identifier, call, member access, nested `thunk { … }`, [`pipe`](./pipe.md), …) — same idea as `await expr`.
 
 ## Semantics
 
@@ -27,8 +29,8 @@ The operand is a **full expression** (identifier, call, member access, nested `t
 - `return run expr` → `runEffect(expr)` then `succeed(__resume)`.
 - At top level → lowers to `execute(operand)`.
 - Each `run` removes **one** thunk layer (no auto-flatten).
-
-`run` is still restricted to **statement** positions (`const x = run …`, bare `run …`, `return run …`) — not inside arbitrary expressions like `foo(run bar)`.
+- Nested / expression-position `run` is normalized (**ANF**) to statement `const __rN = run …` before machine lowering, so `foo(run a)`, `(run t).x`, and `(run tx) | f` all work.
+- [`|`](./pipe.md) binds tighter than `run`: `run tx | f` means `run (tx | f)`, which is **not** `(run tx) | f`.
 
 `try` / `catch` / `finally` are **out of scope** for now (handler/finalizer state is a separate design).
 
@@ -51,10 +53,11 @@ const fetchUser = thunk {
 const result = run program
 ```
 
-See [`examples/basic.thunk`](../../../examples/basic.thunk) and [`examples/requires.thunk`](../../../examples/requires.thunk).
+See [`examples/basic.thunk`](../../../examples/basic.thunk), [`examples/pipe.thunk`](../../../examples/pipe.thunk), and [`examples/requires.thunk`](../../../examples/requires.thunk).
 
 ## Related
 
+- [Pipe](./pipe.md) — `|` first-arg call sugar; precedence with `run`
 - [Thunk blocks](./thunk-blocks.md)
 - [Control flow](./control-flow.md) — `if` / loops with `run` become state transitions
 - [wrap](./wrap.md) — Promise bridge (`Async`)

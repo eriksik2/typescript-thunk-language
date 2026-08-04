@@ -494,14 +494,14 @@ thunk {
 
 ---
 
-## 3.7 `run` only in statement position (restriction)
+## 3.7 `run` in statement and expression position
 
 | | |
 |---|---|
-| **Status** | **Done** (restriction enforced) |
-| **Milestone** | M0 · relax later |
+| **Status** | **Done** (statement + ANF for expression position) |
+| **Milestone** | M0 statement · **M2** ANF |
 
-**What it is.** Initial language forbids `run` in arbitrary expression positions.
+**What it is.** Statement-position `run` lowers directly. Expression-position `run` is normalized to `const __rN = run …` (ANF) before machine lowering. See [language-reference/core/run.md](./language-reference/core/run.md) and [pipe.md](./language-reference/core/pipe.md).
 
 **Cases**
 
@@ -510,8 +510,8 @@ thunk {
 | `const user = run getUser()` | Supported |
 | `const user = run db.getUser(id)` | Supported (full expression operand, like `await`) |
 | `return run provide(t, layer)` | Supported → `runEffect(…)` then `succeed(__resume)` |
-| `return (run getUser()).name` | Unsupported — rewrite to bind then use `.name` |
-| `run` in `while (…)` condition | Unsupported |
+| `return (run getUser).name` | Supported via ANF (`__rN` then `.name`) |
+| `run` in `while (…)` condition | Supported — re-evaluated each iteration |
 
 ---
 
@@ -578,7 +578,7 @@ const value = run (run tx)
 return run provide(fetchUser, db)
 ```
 
-`run` is await-like for its **operand** (member access, calls, nested `thunk` / `run`). It remains statement-position only (§3.7).
+`run` is await-like for its **operand** (member access, calls, nested `thunk` / `run`, pipe). Statement and expression positions are supported; expr-position uses ANF (§3.7).
 
 See [language-reference/core/run.md](./language-reference/core/run.md).
 
@@ -590,10 +590,10 @@ See [language-reference/core/run.md](./language-reference/core/run.md).
 
 | | |
 |---|---|
-| **Status** | **Not started** |
+| **Status** | **Done** |
 | **Milestone** | **M2** |
 
-**What it is.** Ordinary expression transform: `value \| transform` → `transform(value)`. Not thunk-specific.
+**What it is.** Ordinary expression transform: `value \| transform` → `transform(value)`. Not thunk-specific. See [language-reference/core/pipe.md](./language-reference/core/pipe.md).
 
 **What it should look like.**
 
@@ -614,7 +614,7 @@ value | transform
 
 | | |
 |---|---|
-| **Status** | **Not started** |
+| **Status** | **Done** |
 | **Milestone** | **M2** |
 
 **What it should look like.**
@@ -641,16 +641,16 @@ transform(value, a, b)
 
 | | |
 |---|---|
-| **Status** | **Not started** |
+| **Status** | **Done** |
 | **Milestone** | **M2** |
 
-**What it is.** Pipe binds tighter than `run`: `run tx \| f` means `run (tx \| f)`.
+**What it is.** Pipe binds tighter than `run`: `run tx \| f` means `run (tx \| f)`. Expression-position `run` uses ANF before machine lowering.
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| Inside thunk: `const v = run tx \| flatten(1)` | `bind(flatten(tx, 1), v => …)` |
+| Inside thunk: `const v = run tx \| flatten(1)` | `runEffect(flatten(tx, 1))` then resume |
 | Outside thunk: `const v = run tx \| flatten(1)` | `execute(flatten(tx, 1))` |
 
 ---
@@ -1132,7 +1132,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Actor systems | Later |
 | Effect tracking beyond `Requires` | Partial — `Async` flag shipped; more later |
 | Advanced protocol interoperability | Later |
-| `run` in arbitrary expressions / full CFG | After solid statement-position machine; ANF for expr `run` |
+| `run` in arbitrary expressions / full CFG | **Done** (ANF); `for`-condition nested `run` still once-before-loop |
 | `try` / `catch` / `finally` in thunks | Separate design (handler/finalizer state) |
 | Iterative executor (stack) | Largely addressed by machine lowering; further polish optional |
 | Disk `.map` sourcemaps for emit | Optional tooling |
@@ -1154,10 +1154,10 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Multi-`run` lowering | Done (state machine) | **M2** |
 | Code before / between `run` | Partial | **M2** |
 | Lexical capture | Partial | M2 |
-| `run` statement-position only | Done (restriction) | M0 |
-| Nested `run` expressions | Limited | later |
-| Pipe `\|` | Not started | **M2** |
-| Pipe + `run` precedence | Not started | **M2** |
+| `run` statement + expression (ANF) | Done | M0 / **M2** |
+| Nested `run` expressions | Done (ANF) | **M2** |
+| Pipe `\|` | Done | **M2** |
+| Pipe + `run` precedence | Done | **M2** |
 | Postfix protocol syntax | Done | M3 |
 | Protocol normalization / inference | Done (`Requires`) | M3 |
 | `protocol` declarations | Partial (aliases emitted) | M3 |
@@ -1168,4 +1168,4 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
 | Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure tree) | later |
 
-**Next implementation focus:** M2 (pipes / multi-`run` hardening); deepen `protocol` decls so generated type functions drive merge instead of hard-coded `Requires` only.
+**Next implementation focus:** deepen `protocol` decls so generated type functions drive merge instead of hard-coded `Requires` only; typed failure channel + match.
