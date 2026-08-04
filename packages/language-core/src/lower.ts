@@ -130,16 +130,7 @@ class Emitter {
 
     this.write(`declare const ${brand}: unique symbol;\n`);
 
-    this.write("type ");
-    this.writeMapped(name, decl.name.range);
-    this.write(" = ");
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(
-      ` & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
-    );
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(" };\n");
-
+    // Value first so `typeof Name` is available on the branded type.
     this.write("const ");
     this.writeMapped(name, decl.name.range);
     this.write(" = __makeSymbol<");
@@ -150,6 +141,18 @@ class Emitter {
     this.writeMapped(name, decl.name.range);
     this.write(") & { readonly key: symbol; readonly __assoc: ");
     this.writeMapped(assoc, decl.associatedType.range);
+    this.write(" };\n");
+
+    this.write("type ");
+    this.writeMapped(name, decl.name.range);
+    this.write(" = ");
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(
+      ` & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
+    );
+    this.writeMapped(assoc, decl.associatedType.range);
+    this.write(" } & { readonly __symbolIdentity?: typeof ");
+    this.writeMapped(name, decl.name.range);
     this.write(" };\n");
     this.write("\n");
   }

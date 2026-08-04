@@ -2,9 +2,10 @@
 
 **Status:** Canonical language description  
 **Companion:** Implementation, editor packaging, and milestones live in `[ARCHITECTURE.md](./ARCHITECTURE.md)`.  
-**Feature checklist:** Per-feature status, examples, and expected behavior → `[FEATURES.md](./FEATURES.md)`.
+**Feature checklist:** Per-feature status, examples, and expected behavior → `[FEATURES.md](./FEATURES.md)`.  
+**Browseable reference:** Per-feature how-to pages → `[language-reference/](./language-reference/README.md)`.
 
-This document is the full design of Thunk’s syntax, semantics, protocols, lowering, and runtime. Where architecture decisions are settled (editor stack, file extension, milestone order), see `ARCHITECTURE.md`; this file owns *what the language is*. For “is X implemented yet?” see `FEATURES.md`.
+This document is the full design of Thunk’s syntax, semantics, protocols, lowering, and runtime. Where architecture decisions are settled (editor stack, file extension, milestone order), see `ARCHITECTURE.md`; this file owns *what the language is*. For “is X implemented yet?” see `FEATURES.md`. For “how does feature X work?” prefer `language-reference/`.
 
 ---
 
@@ -1427,9 +1428,12 @@ The object-body form is sugar for `symbol Database = { name: string }`.
 3. Assignability: `Name` → `T` allowed; `T` → `Name` only via `Name(...)`.
 4. `typeof Name` is the symbol identity. `typeof brandedValue` is `Name`.
 5. `SymbolType<X>` extracts `T` from either the identity or a branded inhabitant.
-6. Env APIs take the **value** `Name` and an `impl: SymbolType<typeof Name>` (`use` / `layerOf` / `provide`).
-7. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape.
-8. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
+6. Branding **object** values stamps the identity so `Symbol.of(branded)` recovers `Name`; primitives stay naked (use `layerOf` for those).
+7. Env: `use(Name)`; `provide(thunk, branded)` or `provide(thunk, layerOf(Name, impl))`.
+8. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape.
+9. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
+
+Browseable how-to: [`language-reference/symbols/`](./language-reference/symbols/README.md), [`language-reference/environment/`](./language-reference/environment/README.md).
 
 Example (branding):
 
@@ -1443,9 +1447,13 @@ const n: number = a   // ok
 Example (env / Requires):
 
 ```ts
+import { use, provide } from "@thunk/runtime"
+
 symbol Database {
   name: string
 }
+
+const DatabaseLive = Database({ name: "ada" })
 
 const fetchUser = thunk {
   const db = run use(Database)
@@ -1454,19 +1462,13 @@ const fetchUser = thunk {
 
 const program: Thunk<string> = provide(
   fetchUser,
-  layerOf(Database, { name: "ada" }),
+  DatabaseLive,
 )
 ```
 
 See `examples/symbols.thunk` and `examples/requires.thunk`.
 
-Env APIs (`use` / `layerOf` / `provide`) are imported from `@thunk/runtime`:
-
-```ts
-import { use, provide, layerOf } from "@thunk/runtime"
-```
-
-The type `Thunk<T>` is auto-available (no import). Compiler helpers (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) come from `@thunk/runtime/internal` via the lowerer.
+Env APIs (`use` / `provide` / `layerOf` / `Symbol`) are imported from `@thunk/runtime`. The type `Thunk<T>` is auto-available (no import). Compiler helpers (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) come from `@thunk/runtime/internal` via the lowerer.
 
 ### 10.2 `Requires`
 
@@ -1841,21 +1843,21 @@ The result preserves the complete thunk type except for the transformed `Require
 
 ### 13.3 Runtime behavior
 
-At runtime:
+At runtime, `provide` accepts a **layer** or a **branded object** (resolved via `Symbol.of` to a one-entry layer):
 
 ```ts
-provide(
-  thunk,
-  layer,
-)
+provide(thunk, DatabaseLive)
+provide(thunk, layerOf(Database, impl))
 ```
 
 creates a thunk that:
 
 1. receives the current environment;
-2. extends it with the layer;
+2. extends it with the layer (or branded entry);
 3. executes the inner thunk in the extended environment;
 4. restores the outer environment after execution.
+
+See [`language-reference/environment/provide.md`](./language-reference/environment/provide.md).
 
 Conceptually:
 

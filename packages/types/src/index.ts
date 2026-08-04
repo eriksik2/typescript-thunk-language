@@ -63,12 +63,30 @@ export type BrandCarrier<T> = {
 };
 
 /**
+ * Phantom linking a branded inhabitant back to its symbol identity
+ * (`typeof Database`). Used by `Symbol.of` / `provide(thunk, branded)`.
+ */
+export type IdentityCarrier<S> = {
+  readonly __symbolIdentity?: S;
+};
+
+/**
+ * Recover symbol identity type from a branded inhabitant.
+ */
+export type SymbolOfValue<V> = V extends IdentityCarrier<infer S>
+  ? [S] extends [undefined]
+    ? never
+    : S
+  : never;
+
+/**
  * Nominal brand over associated type `T`, keyed by a unique brand key.
  * Emitted by the lowerer for each `symbol` declaration.
  */
-export type Branded<T, Brand extends PropertyKey> = T & {
+export type Branded<T, Brand extends PropertyKey, S = unknown> = T & {
   readonly [K in Brand]: Brand;
-} & BrandCarrier<T>;
+} & BrandCarrier<T> &
+  IdentityCarrier<S>;
 
 /** Bag containing only a `Requires` entry (keys are symbol identities). */
 export type WithRequires<Tags> = ProtocolBag<{ readonly [Requires]: Tags }>;

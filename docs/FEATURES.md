@@ -804,7 +804,7 @@ const db = run use(Database)
 |---|---|
 | `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
-| `use` / `layerOf` / `provide` | Env keyed by `Database.key`; Requires payload is identity |
+| `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
 ---
@@ -819,7 +819,7 @@ const db = run use(Database)
 **What it should look like.**
 
 ```ts
-import { use, provide, layerOf } from "@thunk/runtime"
+import { use } from "@thunk/runtime"
 
 function use<S extends ThunkSymbol<any>>(sym: S): Thunk<SymbolType<S>> Requires(S)
 ```
@@ -867,14 +867,20 @@ layerOf(Database, liveDatabase)
 **What it should look like.**
 
 ```ts
-provide(thunk, layer)  // removes provided Requires; preserves other protocols
+import { provide, layerOf } from "@thunk/runtime"
+
+provide(fetchUser, DatabaseLive)               // branded object (Symbol.of)
+provide(fetchUser, layerOf(Database, impl))  // layer form
 ```
+
+See [language-reference/environment/provide.md](./language-reference/environment/provide.md).
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| Input `Requires(Database \| Logger)` + `Layer<Database>` | `Requires(Logger)` (type-level `ProvideRequires`) |
+| `provide(thunk, DatabaseLive)` | Discharges `Requires(Database)` |
+| `Requires(Database \| Logger)` + `Layer<Database>` | `Requires(Logger)` |
 | Runtime | Extend env, run inner, restore |
 
 ---

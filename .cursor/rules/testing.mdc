@@ -28,7 +28,7 @@ When adding or changing a feature, cover this pipeline (as applicable):
 3. **Typecheck** — `createThunkProject` diagnostics empty (or expected errors)
 4. **Hover / pretty** — `hoverAtOffset` / `formatHoverDisplayString` assert surface form
 5. **Mappings** — each character of a hovered name maps into the generated identifier token
-6. **Example + docs** — update `examples/*.thunk` and FEATURES/LANGUAGE when behavior is user-facing
+6. **Example + docs** — update `examples/*.thunk`, [`docs/language-reference/`](docs/language-reference/) (required for user-facing features), and FEATURES/LANGUAGE as needed
 
 ## Regression template
 

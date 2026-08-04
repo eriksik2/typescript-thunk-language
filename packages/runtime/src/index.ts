@@ -10,6 +10,8 @@ export {
   provide,
   layerOf,
   mergeLayers,
+  symbolOf,
+  Symbol,
   type Layer,
 } from "./internal";
 
@@ -21,6 +23,8 @@ export type {
   ExecuteResult,
   ThunkSymbol,
   SymbolType,
+  SymbolOfValue,
+  IdentityCarrier,
   WithRequires,
   ProvideRequires,
   Requires,

@@ -157,7 +157,9 @@ Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires
 
 **Hover pretty-print:** must tolerate TypeScript-expanded `typeof` identities (callables with `=>`) inside Requires bags — `findThunkTypeSpan` is paren/brace aware and skips `=>`. Surface integration tests live under `packages/language-service/surface-*.test.ts` (`bun run proof:requires`).
 
-**Imports:** authors explicitly `import { use, provide, layerOf, … } from "@thunk/runtime"`. The lowerer injects only `@thunk/runtime/internal` (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) plus auto `import type { Thunk, Requires? } from "@thunk/types"`. `Thunk<T>` needs no author import.
+**Imports:** authors explicitly `import { use, provide, … } from "@thunk/runtime"`. The lowerer injects only `@thunk/runtime/internal` (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) plus auto `import type { Thunk, Requires? } from "@thunk/types"`. `Thunk<T>` needs no author import. Branded **object** values retain identity for `Symbol.of` / `provide(thunk, branded)`.
+
+Browseable feature docs: [`docs/language-reference/`](./language-reference/README.md).
 
 ---
 

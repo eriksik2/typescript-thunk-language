@@ -6,9 +6,11 @@
 import type {
   EmptyProtocols,
   ExecuteResult,
+  IdentityCarrier,
   MergeProtocols,
   ProtocolBag,
   ProvideRequires,
+  SymbolOfValue,
   SymbolType,
   Thunk,
   ThunkSymbol,
@@ -64,20 +66,76 @@ function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
 /**
  * Runtime helper used by the lowerer for `symbol` declarations.
  * Returns a callable brand intro that carries `.key` for env maps.
+ * Branding stamps the identity onto object values so `Symbol.of` / `provide` work.
  */
 export function __makeSymbol<T>(
   name: string,
 ): ((value: T) => T) & ThunkSymbol<T> {
-  const key = Symbol(name);
-  const brand = ((value: T) => value) as ((value: T) => T) & ThunkSymbol<T>;
-  Object.defineProperty(brand, "key", {
+  const key = globalThis.Symbol(name);
+  const identity = ((value: T) =>
+    stampIdentity(value, identity)) as ((value: T) => T) & ThunkSymbol<T>;
+  Object.defineProperty(identity, "key", {
     value: key,
     enumerable: true,
     configurable: false,
     writable: false,
   });
-  return brand;
+  return identity;
 }
+
+/** Well-known property + WeakMap so branded objects remember their identity. */
+const IDENTITY_PROP = globalThis.Symbol.for("@thunk/runtime.symbolIdentity");
+const identityByRef = new WeakMap<object, ThunkSymbol<any>>();
+
+function stampIdentity<T>(value: T, identity: ThunkSymbol<any>): T {
+  if (typeof value === "object" && value !== null) {
+    identityByRef.set(value as object, identity);
+    try {
+      Object.defineProperty(value, IDENTITY_PROP, {
+        value: identity,
+        enumerable: false,
+        configurable: true,
+        writable: false,
+      });
+    } catch {
+      // frozen / sealed — WeakMap is enough
+    }
+  }
+  // Primitives stay naked so `Age` → `number` assignability holds;
+  // `Symbol.of` / branded `provide` require object inhabitants.
+  return value;
+}
+
+function readIdentity(value: unknown): ThunkSymbol<any> | undefined {
+  if (typeof value === "object" && value !== null) {
+    const fromMap = identityByRef.get(value);
+    if (fromMap) return fromMap;
+    const fromProp = (value as Record<symbol, unknown>)[IDENTITY_PROP];
+    if (fromProp && typeof fromProp === "object") {
+      return fromProp as ThunkSymbol<any>;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Recover the symbol identity from a branded inhabitant
+ * (`Symbol.of(DatabaseLive)` → `Database`).
+ */
+export function symbolOf<V>(value: V): SymbolOfValue<V> {
+  const id = readIdentity(value);
+  if (!id) {
+    throw new Error(
+      "Symbol.of: value is not a branded symbol inhabitant (object values branded via Name(...) carry identity; use layerOf for primitives)",
+    );
+  }
+  return id as SymbolOfValue<V>;
+}
+
+/** Namespace alias: `Symbol.of(value)`. */
+export const Symbol = {
+  of: symbolOf,
+} as const;
 
 /**
  * @deprecated Prefer `symbol` declarations (lowered via `__makeSymbol`).
@@ -165,16 +223,44 @@ export function mergeLayers<
 /**
  * Provide a layer for the duration of `thunk`.
  * Removes provided symbol identities from the `Requires` payload.
+ *
+ * Overloads:
+ * - `provide(thunk, layerOf(Database, impl))`
+ * - `provide(thunk, Database(impl))` — branded object; identity via `Symbol.of`
  */
 export function provide<T, P extends ProtocolBag, S extends ThunkSymbol<any>>(
   thunk: Thunk<T, P>,
   layer: Layer<S>,
-): Thunk<T, ProvideRequires<P, S>> {
+): Thunk<T, ProvideRequires<P, S>>;
+export function provide<
+  T,
+  P extends ProtocolBag,
+  V extends IdentityCarrier<any>,
+>(
+  thunk: Thunk<T, P>,
+  branded: V,
+): Thunk<T, ProvideRequires<P, SymbolOfValue<V>>>;
+export function provide<T, P extends ProtocolBag>(
+  thunk: Thunk<T, P>,
+  layerOrBranded: Layer<any> | IdentityCarrier<any>,
+): Thunk<T, any> {
+  const layer = isLayer(layerOrBranded)
+    ? layerOrBranded
+    : layerOf(symbolOf(layerOrBranded), layerOrBranded as any);
   return asThunk({
     kind: "provide",
     inner: asNode(thunk),
     layer,
   });
+}
+
+function isLayer(value: unknown): value is Layer<any> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "entries" in value &&
+    (value as Layer).entries instanceof Map
+  );
 }
 
 /**
@@ -224,6 +310,8 @@ export type {
   ExecuteResult,
   ThunkSymbol,
   SymbolType,
+  SymbolOfValue,
+  IdentityCarrier,
   WithRequires,
   ProvideRequires,
 };

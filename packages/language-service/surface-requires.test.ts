@@ -23,11 +23,15 @@ const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
 const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `import { use, provide, layerOf } from "@thunk/runtime"
+const source = `import { use, provide } from "@thunk/runtime"
 
 symbol Database {
   name: string
 }
+
+const DatabaseLive = Database({
+  name: "live"
+})
 
 const fetchUser = thunk {
   const db = run use(Database)
@@ -36,7 +40,7 @@ const fetchUser = thunk {
 
 const program: Thunk<string> = provide(
   fetchUser,
-  layerOf(Database, { name: "ada" }),
+  DatabaseLive,
 )
 
 const result = run program
@@ -73,7 +77,7 @@ describe("surface: requires.thunk", () => {
   test("lower emits internal helpers + preserves user import", () => {
     const lowered = lowerThunkSource(source, fileName);
     expect(lowered.generatedText).toContain(
-      'import { use, provide, layerOf } from "@thunk/runtime"',
+      'import { use, provide } from "@thunk/runtime"',
     );
     expect(lowered.generatedText).toContain(
       'from "@thunk/runtime/internal"',

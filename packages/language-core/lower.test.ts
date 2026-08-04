@@ -64,6 +64,7 @@ const a: Age = Age(30)
     expect(lowered.generatedText).toContain("__makeSymbol");
     expect(lowered.generatedText).toContain("declare const __brand_Age");
     expect(lowered.generatedText).toContain("type Age = number &");
+    expect(lowered.generatedText).toContain("__symbolIdentity?: typeof Age");
     expect(lowered.generatedText).toContain('__makeSymbol<number>("Age")');
     expect(lowered.generatedText).not.toContain("createTag");
   });

@@ -1,0 +1,25 @@
+---
+description: Keep docs/language-reference up to date when language features change
+alwaysApply: true
+---
+
+# Language reference docs
+
+When adding or changing a **user-facing language feature**, update [`docs/language-reference/`](docs/language-reference/) in the same change.
+
+## Layout
+
+- One markdown file per feature under a section folder (`core/`, `types/`, `symbols/`, `environment/`, `modules/`, `tooling/`).
+- Each section has a `README.md` index; the root has [`README.md`](docs/language-reference/README.md) and [`INDEX.md`](docs/language-reference/INDEX.md).
+
+## Required updates
+
+1. Edit or add the feature page (what / syntax / semantics / examples / **Related** links).
+2. Link it from the section `README.md` and from [`INDEX.md`](docs/language-reference/INDEX.md).
+3. Cross-link related pages (and from related pages back).
+4. Point at `examples/*.thunk` when a good example exists.
+5. Do not leave LANGUAGE/FEATURES as the only description of a new surface feature — reference pages are the browseable source of truth for “how does X work?”.
+
+## Tone
+
+Short, concrete, example-first. Prefer linking to design essays in `docs/LANGUAGE.md` for deep rationale instead of duplicating them.

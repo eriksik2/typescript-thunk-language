@@ -1,8 +1,5 @@
 /**
  * Proof: symbol + Requires surface hover (examples/requires.thunk shape).
- *
- * Catches regressions where TS expands typeof Database and pretty-print
- * mangled Thunk spans on `=>`, or symbol mappings broke identifier hover.
  */
 
 import path from "node:path";
@@ -17,11 +14,15 @@ const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
 const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `import { use, provide, layerOf } from "@thunk/runtime"
+const source = `import { use, provide } from "@thunk/runtime"
 
 symbol Database {
   name: string
 }
+
+const DatabaseLive = Database({
+  name: "live"
+})
 
 const fetchUser = thunk {
   const db = run use(Database)
@@ -30,7 +31,7 @@ const fetchUser = thunk {
 
 const program: Thunk<string> = provide(
   fetchUser,
-  layerOf(Database, { name: "ada" }),
+  DatabaseLive,
 )
 
 const result = run program
@@ -84,6 +85,11 @@ if (!programHover?.displayString?.includes("Thunk<string>")) {
 }
 if (/Requires\(|Protocols\s*\(|EmptyProtocols/.test(programHover.displayString)) {
   fail(`noisy program hover: ${programHover.displayString}`);
+}
+
+const diags = project.getDiagnostics(fileName);
+if (diags.length > 0) {
+  fail(`unexpected diagnostics: ${diags.join("; ")}`);
 }
 
 console.log("\nOK — requires.thunk surface hovers are pretty.");

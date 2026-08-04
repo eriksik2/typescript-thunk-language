@@ -3,6 +3,7 @@
 Thunk is a TypeScript-adjacent language: familiar imperative style, custom `thunk` / `run` / protocol syntax, compiled by **lowering to TypeScript** and a small JS runtime.
 
 Language design: [docs/LANGUAGE.md](./docs/LANGUAGE.md).  
+**Language reference (browse by feature):** [docs/language-reference/](./docs/language-reference/README.md).  
 Feature status: [docs/FEATURES.md](./docs/FEATURES.md).  
 Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
@@ -21,7 +22,7 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 | Package | Role |
 |---|---|
 | `@thunk/language-core` | Parse, AST, lowering, source maps |
-| `@thunk/runtime` | Author APIs: `use` / `provide` / `layerOf` / `mergeLayers` (explicit import) |
+| `@thunk/runtime` | Author APIs: `use` / `provide` / `layerOf` / `Symbol.of` / … (explicit import) |
 | `@thunk/runtime/internal` | Compiler helpers: `succeed` / `defer` / `bind` / `execute` / `__makeSymbol` |
 | `@thunk/types` | `Thunk` encoding, `Requires`, `ThunkSymbol` / `SymbolType` (`Thunk` auto-injected) |
 | `@thunk/language-service` | TS LS host (M0) + Volar language plugin / server |

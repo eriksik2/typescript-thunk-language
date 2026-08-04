@@ -9,11 +9,13 @@ import type {
   EmptyProtocols,
   ExecuteResult,
   GetRequires,
+  IdentityCarrier,
   MergeProtocols,
   Protocol,
   Requires,
   RequiresBind,
   Strip,
+  SymbolOfValue,
   SymbolType,
   Thunk,
   ThunkReturnType,
@@ -137,5 +139,13 @@ describe("@thunk/types", () => {
     const _r: Req = true;
     const _c: Carrier = true;
     expect(_r && _c).toBe(true);
+  });
+
+  test("SymbolOfValue extracts identity from IdentityCarrier", () => {
+    type Db = ThunkSymbol<{ name: string }>;
+    type Live = { name: string } & IdentityCarrier<Db>;
+    type Id = ExpectEqual<SymbolOfValue<Live>, Db>;
+    const _i: Id = true;
+    expect(_i).toBe(true);
   });
 });

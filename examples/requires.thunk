@@ -1,13 +1,26 @@
 // Example: Requires + use / provide via first-class symbol
 
-import { use, provide, layerOf } from "@thunk/runtime"
+import { use, provide } from "@thunk/runtime"
 
-symbol Database {
+interface User {
+  id: string
   name: string
 }
 
+symbol Database {
+  name: string;
+
+  getUser: (id: string) => Thunk<User>;
+}
+
 const DatabaseLive = Database({
-  name: "live"
+  name: "live",
+  getUser: (id: string) => thunk {
+    return {
+      id,
+      name: "John Doe",
+    }
+  }
 })
 
 const fetchUser = thunk {
@@ -17,7 +30,6 @@ const fetchUser = thunk {
 
 const program: Thunk<string> = provide(
   fetchUser,
-  //layerOf(Database, DatabaseLive),
   DatabaseLive,
 )
 

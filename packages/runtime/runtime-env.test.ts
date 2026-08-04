@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { layerOf, provide, use } from "./src/index";
+import { layerOf, provide, symbolOf, Symbol, use } from "./src/index";
 import {
   __makeSymbol,
   bind,
@@ -11,6 +11,7 @@ import type {
   GetRequires,
   Protocol,
   ProvideRequires,
+  SymbolOfValue,
   SymbolType,
   WithRequires,
 } from "@thunk/types";
@@ -80,5 +81,35 @@ describe("use / provide / Layer", () => {
     const a = Age(30);
     expect(a).toBe(30);
     expect(typeof Age.key).toBe("symbol");
+  });
+
+  test("Symbol.of recovers identity from branded object", () => {
+    type Service = { name: string };
+    const Database = __makeSymbol<Service>("Database");
+    const live = Database({ name: "live" });
+    expect(symbolOf(live)).toBe(Database);
+    expect(Symbol.of(live)).toBe(Database);
+  });
+
+  test("provide(thunk, branded) installs under Symbol.of key", () => {
+    type Service = { name: string };
+    const Database = __makeSymbol<Service>("Database");
+    type Database = Service & {
+      readonly __assoc: Service;
+      readonly __symbolIdentity?: typeof Database;
+    };
+    const live = Database({ name: "ada" }) as Database;
+    const program = bind(use(Database), (db) => succeed(db.name));
+    const runnable = provide(program, live);
+    type Req = ExpectEqual<GetRequires<Protocol<typeof runnable>>, never>;
+    const _r: Req = true;
+    expect(execute(runnable)).toBe("ada");
+    expect(_r).toBe(true);
+  });
+
+  test("Symbol.of throws on naked primitives", () => {
+    const Age = __makeSymbol<number>("Age");
+    const a = Age(30);
+    expect(() => symbolOf(a as never)).toThrow(/Symbol\.of/);
   });
 });
