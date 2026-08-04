@@ -1,0 +1,16 @@
+{
+  "name": "@thunk/language-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@thunk/runtime": "workspace:*",
+    "@thunk/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

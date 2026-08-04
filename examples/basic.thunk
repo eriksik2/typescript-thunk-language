@@ -1,0 +1,8 @@
+const random = thunk {
+  return Math.random()
+}
+
+const program = thunk {
+  const value = run random
+  return value * 2
+}
