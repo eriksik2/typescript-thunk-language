@@ -18,9 +18,10 @@ import type {
   SymbolDeclaration,
   ThunkExpression,
   TsExpression,
+  TsExpressionPart,
   TypeAnnotation,
 } from "./ast";
-import { offsetToPosition, type Range } from "./source-map";
+import { offsetToPosition, positionToOffset, type Range } from "./source-map";
 
 export class ParseError extends Error {
   constructor(
@@ -570,41 +571,12 @@ class Parser {
     return this.parseTsExpression();
   }
 
+  /**
+   * Operand of `run`, like `await`: a full expression (member access, calls,
+   * nested `thunk { … }`, nested `run`, …) — not only a bare identifier.
+   */
   private parseRunOperand(): Expression {
-    this.skipTrivia();
-    const start = this.pos;
-    if (this.isIdentStart(this.peek())) {
-      const ident = this.parseIdentifier();
-      this.skipSpaces();
-      if (this.peek() === "(") {
-        const callText = this.consumeCallAfterIdent(start);
-        return {
-          kind: "TsExpression",
-          range: this.range(start, this.pos),
-          text: callText,
-        };
-      }
-      return ident;
-    }
-    return this.parseTsExpression();
-  }
-
-  private consumeCallAfterIdent(start: number): string {
-    this.expect("(");
-    let depth = 1;
-    while (!this.eof() && depth > 0) {
-      const c = this.peek();
-      if (c === "(") depth++;
-      else if (c === ")") depth--;
-      if (depth === 0) break;
-      if (c === '"' || c === "'" || c === "`") {
-        this.consumeString(c);
-        continue;
-      }
-      this.pos++;
-    }
-    this.expect(")");
-    return this.text.slice(start, this.pos);
+    return this.parseExpression();
   }
 
   private parseTsExpression(): TsExpression {
@@ -613,12 +585,35 @@ class Parser {
     let depthParen = 0;
     let depthBrace = 0;
     let depthBracket = 0;
+    const parts: TsExpressionPart[] = [];
+    let chunkStart = this.pos;
+
+    const flush = () => {
+      if (this.pos > chunkStart) {
+        parts.push({
+          kind: "text",
+          text: this.text.slice(chunkStart, this.pos),
+          range: this.range(chunkStart, this.pos),
+        });
+        chunkStart = this.pos;
+      }
+    };
 
     while (!this.eof()) {
       const c = this.peek();
       if (depthParen === 0 && depthBrace === 0 && depthBracket === 0) {
         if (c === ";" || c === "\n" || c === "}") break;
       }
+
+      if (
+        this.tryEmbedThunkOrRun(parts, () => {
+          flush();
+        })
+      ) {
+        chunkStart = this.pos;
+        continue;
+      }
+
       if (c === "(") depthParen++;
       else if (c === ")") {
         if (depthParen === 0) break;
@@ -638,18 +633,115 @@ class Parser {
       this.pos++;
     }
 
-    const raw = this.text.slice(start, this.pos);
-    const trimmed = raw.trimEnd();
-    if (!trimmed) {
+    flush();
+
+    // Trim trailing whitespace (same contract as before).
+    let end = this.pos;
+    while (parts.length > 0) {
+      const last = parts[parts.length - 1]!;
+      if (last.kind !== "text") break;
+      const trimmed = last.text.trimEnd();
+      if (trimmed.length === last.text.length) break;
+      if (trimmed.length === 0) {
+        parts.pop();
+        continue;
+      }
+      const partStart = positionToOffset(this.text, last.range.start);
+      const newEnd = partStart + trimmed.length;
+      parts[parts.length - 1] = {
+        kind: "text",
+        text: trimmed,
+        range: this.range(partStart, newEnd),
+      };
+      end = newEnd;
+      break;
+    }
+    if (parts.length > 0) {
+      const last = parts[parts.length - 1]!;
+      end =
+        last.kind === "text"
+          ? positionToOffset(this.text, last.range.end)
+          : positionToOffset(this.text, last.expression.range.end);
+    }
+
+    this.pos = end;
+    if (parts.length === 0) {
       throw new ParseError("expected expression", start);
     }
-    const end = start + trimmed.length;
-    this.pos = end;
+    const text = this.text.slice(start, end);
+    if (!text) {
+      throw new ParseError("expected expression", start);
+    }
     return {
       kind: "TsExpression",
       range: this.range(start, end),
-      text: trimmed,
+      text,
+      parts: this.mergeAdjacentTextParts(parts),
     };
+  }
+
+  /**
+   * If at `thunk { … }`, flush pending text, parse it, and push an embedded
+   * part. Returns true when an embed was consumed.
+   *
+   * Nested `run` is not auto-detected here: `run` is too easy to confuse with
+   * property access (`x.run`) inside opaque TypeScript.
+   */
+  private tryEmbedThunkOrRun(
+    parts: TsExpressionPart[],
+    onBeforeEmbed: () => void,
+  ): boolean {
+    if (!this.atIdentBoundary()) return false;
+
+    if (this.peekKeyword("thunk")) {
+      const save = this.pos;
+      this.matchKeyword("thunk");
+      this.skipTrivia();
+      if (this.peek() === "{") {
+        this.pos = save;
+        onBeforeEmbed();
+        parts.push({
+          kind: "embedded",
+          expression: this.parseExpression(),
+        });
+        return true;
+      }
+      this.pos = save;
+    }
+
+    return false;
+  }
+
+  private atIdentBoundary(): boolean {
+    if (!this.isIdentStart(this.peek())) return false;
+    if (this.pos > 0 && this.isIdentPart(this.text[this.pos - 1]!)) {
+      return false;
+    }
+    return true;
+  }
+
+  private mergeAdjacentTextParts(
+    parts: readonly TsExpressionPart[],
+  ): TsExpressionPart[] {
+    const out: TsExpressionPart[] = [];
+    for (const part of parts) {
+      const prev = out[out.length - 1];
+      if (part.kind === "text" && prev?.kind === "text") {
+        out[out.length - 1] = {
+          kind: "text",
+          text: prev.text + part.text,
+          range: {
+            start: prev.range.start,
+            end: part.range.end,
+          },
+        };
+      } else if (part.kind === "text" && part.text.length === 0) {
+        continue;
+      } else {
+        out.push(part);
+      }
+    }
+    return out;
   }
 
   private consumeString(quote: string): void {

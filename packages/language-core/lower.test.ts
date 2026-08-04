@@ -121,6 +121,72 @@ const x = use
     expect(lowered.generatedText).toContain("@thunk/runtime/internal");
   });
 
+  test("parses and lowers nested thunk inside object literal", () => {
+    const source = `const DatabaseLive = Database({
+  name: "live",
+  getUser: (id: string) => thunk {
+    return { id, name: "Ada" }
+  }
+})
+`;
+    const ast = parseThunkSource(source);
+    const stmt = ast.statements[0] as {
+      initializer: {
+        kind: string;
+        parts: { kind: string; expression?: { kind: string } }[];
+      };
+    };
+    expect(stmt.initializer.kind).toBe("TsExpression");
+    expect(stmt.initializer.parts.some((p) => p.kind === "embedded")).toBe(
+      true,
+    );
+    const embedded = stmt.initializer.parts.find((p) => p.kind === "embedded");
+    expect(embedded?.expression?.kind).toBe("ThunkExpression");
+
+    const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain(
+      'getUser: (id: string) => defer(() => succeed({ id, name: "Ada" }))',
+    );
+    expect(lowered.generatedText).not.toContain("=> thunk {");
+  });
+
+  test("run operand is a full expression (member call like await)", () => {
+    const source = `const fetchUser = thunk {
+  const db = run use(Database)
+  const user = run db.getUser("1234")
+  return db.name + " " + user.name
+}
+`;
+    const ast = parseThunkSource(source);
+    const body = (
+      ast.statements[0] as {
+        initializer: { body: { initializer?: { kind: string; expression?: { kind: string; text?: string } } }[] };
+      }
+    ).initializer.body;
+    const userStmt = body[1]!;
+    expect(userStmt.initializer?.kind).toBe("RunExpression");
+    expect(userStmt.initializer?.expression?.kind).toBe("TsExpression");
+    expect(userStmt.initializer?.expression?.text).toBe('db.getUser("1234")');
+
+    const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain(
+      'bind(db.getUser("1234"), user => succeed(db.name + " " + user.name))',
+    );
+    expect(lowered.generatedText).not.toContain("bind(db, user");
+    expect(lowered.generatedText).not.toMatch(/\{\s*\.getUser/);
+  });
+
+  test("return run lowers to bind then succeed", () => {
+    const lowered = lowerThunkSource(`const program = thunk {
+  return run provide(fetchUser, db)
+}
+`);
+    expect(lowered.generatedText).toContain(
+      "bind(provide(fetchUser, db), __v => succeed(__v))",
+    );
+    expect(lowered.generatedText).not.toContain("succeed(execute(");
+  });
+
   test("symbol name mappings land on generated Database identifier", () => {
     const source = `symbol Database {
   name: string

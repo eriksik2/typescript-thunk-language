@@ -12,6 +12,17 @@ const program = thunk {
 }
 ```
 
+`thunk { … }` is an **expression**. It may appear anywhere an expression is legal — const initializers, `return`, call arguments, object/array literals, arrow bodies:
+
+```ts
+const DatabaseLive = Database({
+  name: "live",
+  getUser: (id: string) => thunk {
+    return { id, name: "Ada" }
+  },
+})
+```
+
 Body statements may include ordinary bindings, nested thunks, and [`run`](./run.md) in statement position.
 
 ## Semantics
@@ -19,6 +30,7 @@ Body statements may include ordinary bindings, nested thunks, and [`run`](./run.
 - Lowers to `defer(() => …)` with `succeed` / `bind` for control flow.
 - Yield type is the type of the `return` expression (or `void`).
 - Pure thunks have an empty protocol bag → surface type `Thunk<T>`.
+- Nested `thunk { … }` inside ordinary TypeScript text (calls, objects, arrows) is still parsed and lowered — not left as raw `thunk` for TypeScript.
 
 ## Examples
 
@@ -33,7 +45,7 @@ const program = thunk {
 }
 ```
 
-See [`examples/basic.thunk`](../../../examples/basic.thunk).
+See [`examples/basic.thunk`](../../../examples/basic.thunk) and nested usage in [`examples/requires.thunk`](../../../examples/requires.thunk).
 
 ## Related
 

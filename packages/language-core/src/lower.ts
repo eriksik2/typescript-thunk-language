@@ -256,6 +256,18 @@ class Emitter {
       runStmt.expression.kind === "RunExpression"
     ) {
       bindSource = runStmt.expression.expression;
+    } else if (
+      runStmt.kind === "ReturnStatement" &&
+      runStmt.expression.kind === "RunExpression"
+    ) {
+      // `return run expr` ≈ await in return position: bind then succeed.
+      this.write("bind(");
+      this.emitValueExpression(runStmt.expression.expression);
+      this.write(", __v => succeed(__v))");
+      if (needsBlock) {
+        this.write(";\n}");
+      }
+      return;
     } else {
       throw new Error("run must be in statement position");
     }
@@ -354,7 +366,13 @@ class Emitter {
         this.writeMapped(expr.name, expr.range);
         return;
       case "TsExpression":
-        this.writeMapped(expr.text, expr.range);
+        for (const part of expr.parts) {
+          if (part.kind === "text") {
+            this.writeMapped(part.text, part.range);
+          } else {
+            this.emitValueExpression(part.expression);
+          }
+        }
         return;
       case "ThunkExpression":
         this.emitThunk(expr);
@@ -396,6 +414,9 @@ function isRunBindingStatement(stmt: Statement): boolean {
     return stmt.initializer.kind === "RunExpression";
   }
   if (stmt.kind === "ExpressionStatement") {
+    return stmt.expression.kind === "RunExpression";
+  }
+  if (stmt.kind === "ReturnStatement") {
     return stmt.expression.kind === "RunExpression";
   }
   return false;

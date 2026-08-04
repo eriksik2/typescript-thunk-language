@@ -59,8 +59,11 @@ const value = thunk {
 | `thunk { return 42 }` | Type conceptually `Thunk<number>`; body not executed at construction |
 | `thunk { console.log("hi"); return 1 }` | Log only when the thunk is later `run` / `execute`d |
 | Nested `thunk` in an initializer | Allowed; each thunk is its own inert value |
+| Nested `thunk` in object / arrow / call args | Allowed; hybrid parser embeds and lowers |
 
-**Implementation notes.** Parsed as `ThunkExpression`; lowered to `defer(() => …)`.
+**Implementation notes.** Parsed as `ThunkExpression`; lowered to `defer(() => …)`. Nested forms inside opaque TS regions are `TsExpression` parts (`embedded`), not left as raw `thunk` text.
+
+See [language-reference/core/thunk-blocks.md](./language-reference/core/thunk-blocks.md).
 
 ---
 
@@ -145,6 +148,7 @@ run getUser(id)
 |---|---|
 | `value * 2` | Copied into `succeed(value * 2)` |
 | `getUser(id)` after `run` | Operand of `bind` / `execute` |
+| `run db.getUser("1234")` | Full member-call operand (await-like) |
 | Nested braces/parens in object literals | Parser should track depth (M0 does) |
 
 ---
@@ -469,6 +473,8 @@ thunk {
 | Example | Expected |
 |---|---|
 | `const user = run getUser()` | Supported |
+| `const user = run db.getUser(id)` | Supported (full expression operand, like `await`) |
+| `return run provide(t, layer)` | Supported → `bind(…, __v => succeed(__v))` |
 | `return (run getUser()).name` | Unsupported — rewrite to bind then use `.name` |
 | `run` in `while (…)` condition | Unsupported |
 
@@ -522,25 +528,24 @@ See §2.3 / §3.2.
 
 ---
 
-## 4.4 Nested `run` expressions
+## 4.4 Nested `run` / full operands
 
 | | |
 |---|---|
-| **Status** | **Not started** / limited |
-| **Milestone** | After statement-position solidify |
+| **Status** | **Done** (operand = full expression; nested `run run x` parses) |
+| **Milestone** | M0+ |
 
 **What it should look like.**
 
 ```ts
+const user = run db.getUser("1234")
 const value = run (run tx)
+return run provide(fetchUser, db)
 ```
 
-**Cases**
+`run` is await-like for its **operand** (member access, calls, nested `thunk` / `run`). It remains statement-position only (§3.7).
 
-| Example | Expected |
-|---|---|
-| Nested `run` as expression | Two sequencing ops (LANGUAGE §7.4) |
-| Current parser | `run` operand parsing is limited; prefer statement form for now |
+See [language-reference/core/run.md](./language-reference/core/run.md).
 
 ---
 

@@ -184,4 +184,103 @@ const fetchUser = thunk {
     expect(d).not.toMatch(/__assoc/);
     expect(d).not.toMatch(/\(value:/);
   });
+
+  test("nested thunk in object literal typechecks and lowers", () => {
+    const nested = `import { use, provide } from "@thunk/runtime"
+
+interface User {
+  id: string
+  name: string
+}
+
+symbol Database {
+  name: string
+  getUser: (id: string) => Thunk<User>
+}
+
+const DatabaseLive = Database({
+  name: "live",
+  getUser: (id: string) => thunk {
+    return { id, name: "Ada" }
+  }
+})
+
+const program: Thunk<string> = provide(
+  thunk {
+    const db = run use(Database)
+    return db.name
+  },
+  DatabaseLive,
+)
+`;
+    const p = createThunkProject({
+      files: { [fileName]: nested },
+      moduleMap: {
+        "@thunk/types": typesPath,
+        "@thunk/runtime": runtimePath,
+        "@thunk/runtime/internal": internalPath,
+      },
+    });
+    expect(p.getDiagnostics(fileName)).toEqual([]);
+
+    const lowered = lowerThunkSource(nested, fileName);
+    expect(lowered.generatedText).toContain("defer(() => succeed({ id, name: \"Ada\" }))");
+    expect(lowered.generatedText).not.toContain("=> thunk {");
+
+    const offset = nested.indexOf("const DatabaseLive") + "const ".length;
+    const hover = hoverAtOffset(p, fileName, nested, offset);
+    expect(hover?.displayString).toBeTruthy();
+    expect(hover!.displayString).toMatch(/Database/);
+    expect(hover!.displayString).not.toMatch(/__brand_/);
+  });
+
+  test("run db.getUser(...) typechecks like await (full operand)", () => {
+    const src = `import { use, provide } from "@thunk/runtime"
+
+interface User {
+  id: string
+  name: string
+}
+
+symbol Database {
+  name: string
+  getUser: (id: string) => Thunk<User>
+}
+
+const DatabaseLive = Database({
+  name: "live",
+  getUser: (id: string) => thunk {
+    return { id, name: "Ada" }
+  }
+})
+
+const fetchUser = thunk {
+  const db = run use(Database)
+  const user = run db.getUser("1234")
+  return user.name
+}
+
+const program: Thunk<string> = provide(fetchUser, DatabaseLive)
+`;
+    const p = createThunkProject({
+      files: { [fileName]: src },
+      moduleMap: {
+        "@thunk/types": typesPath,
+        "@thunk/runtime": runtimePath,
+        "@thunk/runtime/internal": internalPath,
+      },
+    });
+    expect(p.getDiagnostics(fileName)).toEqual([]);
+
+    const lowered = lowerThunkSource(src, fileName);
+    expect(lowered.generatedText).toContain('bind(db.getUser("1234"), user =>');
+    expect(lowered.generatedText).not.toContain("bind(db, user");
+
+    const offset = src.indexOf("const user") + "const ".length;
+    const hover = hoverAtOffset(p, fileName, src, offset);
+    expect(hover?.displayString).toBeTruthy();
+    expect(hover!.displayString).toMatch(/\bUser\b/);
+    expect(hover!.displayString).not.toMatch(/Thunk</);
+    expect(hover!.displayString).not.toMatch(/__brand_/);
+  });
 });

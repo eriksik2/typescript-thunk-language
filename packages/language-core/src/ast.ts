@@ -149,9 +149,29 @@ export interface RunExpression {
   readonly expression: Expression;
 }
 
-/** Opaque TypeScript expression text (hybrid front-end). */
+/**
+ * Piece of a hybrid TS expression: opaque text, or an embedded Thunk form
+ * (`thunk { … }` / `run …`) nested inside that text.
+ */
+export type TsExpressionPart =
+  | {
+      readonly kind: "text";
+      readonly text: string;
+      readonly range: Range;
+    }
+  | {
+      readonly kind: "embedded";
+      readonly expression: Expression;
+    };
+
+/**
+ * Hybrid TypeScript expression: mostly opaque text, with optional holes for
+ * nested `thunk` / `run` that must be lowered.
+ */
 export interface TsExpression {
   readonly kind: "TsExpression";
   readonly range: Range;
+  /** Full original source span (including any embedded thunk/run text). */
   readonly text: string;
+  readonly parts: readonly TsExpressionPart[];
 }
