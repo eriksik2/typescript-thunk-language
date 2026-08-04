@@ -1,8 +1,8 @@
 # Thunk Language — Architecture Decision
 
 **Status:** Accepted  
-**Priority:** Real editor via Volar first (M1); language features second  
-**Date:** 2026-08-04 (milestones reordered same day: Volar before M2+)
+**Priority:** M1 done; next language features (M2+)  
+**Date:** 2026-08-04 (milestones reordered same day: Volar before M2+; M1 completed)
 
 ---
 
@@ -89,15 +89,16 @@ TypeScript is the host type system. Thunk owns protocol-bag normalization and th
 2. A thin host around `typescript.createLanguageService` that serves **lowered** text for `.thunk` files.
 3. Position mapping for hover / diagnostics (`bun run proof:hover`).
 
-**Next (M1 — required before further language work):**
+**Done (M1 — Volar + extension + CLI):**
 
-- Package the same core as a **Volar.js language plugin** so we get embedded-language mapping, multi-editor LSP, and Labs tooling without reinventing project glue.
-- Ship a VS Code / Cursor extension that activates on `.thunk` and uses that plugin.
-- Keep `language-core` free of VS Code APIs so CLI and editor share one implementation.
-- Freeze the language surface at the M0 subset until hover, diagnostics, and emit work in a real editor.
+- Volar.js language plugin + Cursor/VS Code extension on `.thunk`.
+- CLI emit sharing `language-core`.
+- `language-core` stays free of VS Code APIs.
+
+**Next (M2 — language growth):** pipes, multi-`run`, defer placement. Then protocols (M3) and `use`/`provide` (M4). See §9 and `LANGUAGE.md`.
 
 Do **not** start with a TypeScript fork or a bespoke type checker.
-Do **not** grow pipes / protocols / `use`/`provide` until the Volar loop is real.
+Do **not** skip to protocols / `use`/`provide` before M2 hardening of multi-`run` lowering.
 
 ---
 
@@ -211,7 +212,8 @@ packages/
 
 docs/
   ARCHITECTURE.md    # this file
-  LANGUAGE.md        # language design (from the design brief)
+  LANGUAGE.md        # canonical language design (syntax, semantics, protocols)
+  FEATURES.md        # per-feature status, examples, expected behavior
 
 examples/            # .thunk samples (used as the extension smoke fixture)
 scripts/             # proof scripts (proof:hover) and future extension helpers
@@ -260,7 +262,7 @@ The existing exploratory `src/` Continuation/Thunk library is **not** the langua
 
 ## 9. Milestones (Volar environment first)
 
-Language features after M0 stay frozen until the editor loop is real. One working `.thunk` program in Cursor is worth more than more syntax.
+Language features after M0 were frozen until the editor loop was real (M1). With M1 done, grow the language per M2+ below. One working editor loop remains the base for all further design.
 
 ### M0 — Prove the editor path (kernel)
 
@@ -272,9 +274,11 @@ Language features after M0 stay frozen until the editor loop is real. One workin
 
 **Status: done.** `bun run proof:hover` shows hover on `const value = run random` as `(parameter) value: number`.
 
-### M1 — Volar + Cursor/VS Code environment ← **next**
+### M1 — Volar + Cursor/VS Code environment
 
-Goal: open `examples/basic.thunk`, see types and diagnostics, and compile with the same lowering — even if the language still only supports the M0 subset.
+**Status: done.** Extension + CLI emit share `language-core`; hover/diagnostics work in the editor on the M0 subset.
+
+Goal (achieved): open `examples/basic.thunk`, see types and diagnostics, and compile with the same lowering — even if the language still only supports the M0 subset.
 
 1. **Volar language plugin** in `@thunk/language-service` that exposes virtual TypeScript from `language-core` (same maps as M0).
 2. **`packages/vscode` extension** that activates on `.thunk` and runs the Volar language server / plugin.
@@ -288,13 +292,13 @@ Goal: open `examples/basic.thunk`, see types and diagnostics, and compile with t
 
 **Exit criterion:** a developer can feel the language in the editor without running `proof:hover`.
 
-### M2 — Pipe + multi-`run` + `defer` placement
+### M2 — Pipe + multi-`run` + `defer` placement ← **next**
 
-Only after M1 exit criterion.
+See `LANGUAGE.md` §§6–8. Grow the M0 lowerer/parser without protocols yet.
 
-- Pipe precedence with `run`.
+- Pipe syntax and precedence with `run` (`run tx | f` → `run (tx | f)`).
 - Multiple sequential `run`s and ordinary statements between them.
-- Eager-vs-deferred correctness for code before first `run`.
+- Eager-vs-deferred correctness for code before first `run` (already partially in M0; harden + test).
 
 ### M3 — Protocol bag encoding + `Requires`
 
@@ -339,4 +343,4 @@ Still open (do not block M1):
 **One shared `language-core` serves both the language service and the compiler.**  
 **Protocols are encoded as TypeScript types after protocol-aware normalization.**  
 **Do not fork TypeScript and do not rely on LS plugins alone.**  
-**Next work is M1: Volar plugin + extension + CLI emit on the M0 subset — then grow the language.**
+**M1 is done. Next work is M2: pipes + multi-`run` + defer placement — then protocols (M3) and `use`/`provide` (M4). Language semantics: `LANGUAGE.md`.**
