@@ -8,16 +8,14 @@
  *   └── Error
  * ```
  *
- * - `Failure` — abstract root; `Symbol.is(x, Failure)` works; cannot brand.
- * - `Defect` — corrupted / should-never-happen (e.g. naked throws in thunks).
- * - `UnhandledError` — external failure not yet handled (e.g. future `wrap`).
- * - `Error` — ordinary tagged application error (handleable later).
+ * Hierarchy is identity pedigree — not value subtyping:
+ * `Symbol.has(defect, Failure)` is true; `const f: Failure = defect` is not.
  *
  * Import from `@thunk/runtime`. The `Error` export shadows global `Error` when
  * imported by name — use `globalThis.Error` for the platform constructor.
  */
 
-import type { ThunkSymbol } from "@thunk/types";
+import type { ParentCarrier, ThunkSymbol } from "@thunk/types";
 import { __makeSymbol } from "./internal";
 
 export type FailurePayload = {
@@ -36,60 +34,74 @@ export type Failure = FailurePayload & {
 
 /**
  * Abstract Failure identity — not callable.
- * Still participates in `Symbol.is` / `Symbol.extends`.
+ * Still participates in `Symbol.has` / `Symbol.extends` / `Symbol.to`.
  */
 export const Failure: {
   readonly key: symbol;
   readonly __assoc: FailurePayload;
+  readonly __thunkSymbol?: "ThunkSymbol";
   readonly __abstract: true;
 } = __makeSymbol<FailurePayload>("Failure", {
   abstract: true,
 }) as unknown as {
   readonly key: symbol;
   readonly __assoc: FailurePayload;
+  readonly __thunkSymbol?: "ThunkSymbol";
   readonly __abstract: true;
 };
 
 const failureParent = Failure as unknown as ThunkSymbol<FailurePayload>;
 
 /** Defect — faulty / corrupted program (e.g. unexpected naked throws). */
-export type Defect = Failure & {
+export type Defect = FailurePayload & {
   readonly [__brand_Defect]: typeof __brand_Defect;
-} & { readonly __symbolIdentity?: typeof Defect };
+} & { readonly __assoc: FailurePayload } & {
+  readonly __symbolIdentity?: typeof Defect;
+};
 
 export const Defect: ((value: FailurePayload) => Defect) &
-  ThunkSymbol<FailurePayload> = __makeSymbol<FailurePayload>("Defect", {
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure> = __makeSymbol<FailurePayload>("Defect", {
   parent: failureParent,
 }) as unknown as ((value: FailurePayload) => Defect) &
-  ThunkSymbol<FailurePayload>;
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure>;
 
 /**
  * UnhandledError — external/async failure not yet handled
- * (e.g. Promise rejection via future `wrap`).
+ * (e.g. `wrap` rejection).
  */
-export type UnhandledError = Failure & {
+export type UnhandledError = FailurePayload & {
   readonly [__brand_UnhandledError]: typeof __brand_UnhandledError;
-} & { readonly __symbolIdentity?: typeof UnhandledError };
+} & { readonly __assoc: FailurePayload } & {
+  readonly __symbolIdentity?: typeof UnhandledError;
+};
 
 export const UnhandledError: ((value: FailurePayload) => UnhandledError) &
-  ThunkSymbol<FailurePayload> = __makeSymbol<FailurePayload>(
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure> = __makeSymbol<FailurePayload>(
   "UnhandledError",
   { parent: failureParent },
 ) as unknown as ((value: FailurePayload) => UnhandledError) &
-  ThunkSymbol<FailurePayload>;
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure>;
 
 /**
  * Error — ordinary tagged application error.
  * Internal name avoids clashing with the platform `Error` constructor in this file.
  */
-export type Error = Failure & {
+export type Error = FailurePayload & {
   readonly [__brand_Error]: typeof __brand_Error;
-} & { readonly __symbolIdentity?: typeof ErrorSymbol };
+} & { readonly __assoc: FailurePayload } & {
+  readonly __symbolIdentity?: typeof ErrorSymbol;
+};
 
 const ErrorSymbol: ((value: FailurePayload) => Error) &
-  ThunkSymbol<FailurePayload> = __makeSymbol<FailurePayload>("Error", {
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure> = __makeSymbol<FailurePayload>("Error", {
   parent: failureParent,
 }) as unknown as ((value: FailurePayload) => Error) &
-  ThunkSymbol<FailurePayload>;
+  ThunkSymbol<FailurePayload> &
+  ParentCarrier<typeof Failure>;
 
 export { ErrorSymbol as Error };

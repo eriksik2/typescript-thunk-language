@@ -10,7 +10,7 @@ Supports **abstract** symbols and **`extends`** hierarchies (value-level Liskov;
 | [symbol declarations](./symbol-declarations.md) | `symbol Name = T` / `{ … }` / `abstract` / `extends` |
 | [Branding](./branding.md) | `Name(value)` intro; assignability |
 | [Symbol.of](./symbol-of.md) | Recover leaf identity from a branded object |
-| [Symbol.is](./symbol-is.md) | Hierarchical `is` / `extends` tests |
+| [Symbol.is / has / to](./symbol-is.md) | Exact `is`, hierarchical `has` / `to` / `extends` |
 | [Failure hierarchy](./failure-hierarchy.md) | Built-in `Failure` / `Defect` / `UnhandledError` / `Error` |
 
 ## Related

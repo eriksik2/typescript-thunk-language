@@ -365,7 +365,7 @@ class Parser {
     const baseText = this.consumeTypeBase();
     this.skipTrivia();
     const protocols: ProtocolClause[] = [];
-    while (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+    while (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
       protocols.push(this.parseProtocolClause());
       this.skipTrivia();
     }
@@ -400,7 +400,7 @@ class Parser {
           const save = this.pos;
           this.pos++;
           this.skipTrivia();
-          if (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+          if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
             this.pos = save;
             break;
           }
@@ -410,7 +410,7 @@ class Parser {
           }
           this.pos = save;
         }
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once")) break;
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) break;
       }
 
       const c = this.peek();
@@ -420,7 +420,7 @@ class Parser {
         const save = this.pos;
         this.pos++;
         this.skipTrivia();
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peek() === "=") {
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async") || this.peek() === "=") {
           this.pos = save;
           break;
         }
@@ -491,6 +491,12 @@ class Parser {
     if (this.matchKeyword("Once")) {
       return {
         name: "Once",
+        range: this.range(start, this.pos),
+      };
+    }
+    if (this.matchKeyword("Async")) {
+      return {
+        name: "Async",
         range: this.range(start, this.pos),
       };
     }

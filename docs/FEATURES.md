@@ -848,8 +848,8 @@ const db = run use(Database)
 | `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
 | `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
-| `abstract symbol` | Not callable; still a type / `Symbol.is` target |
-| `symbol Child extends Parent` | Child type <: Parent; `Symbol.is(child, Parent)`; env keys stay exact |
+| `abstract symbol` | Not callable; still a type / `Symbol.has` / `Symbol.to` target |
+| `symbol Child extends Parent` | Pedigree for `has` / `to`; **no** value assignability to Parent; env keys stay exact |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
 Built-in Failure tree: see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).
@@ -940,6 +940,40 @@ See [language-reference/environment/provide.md](./language-reference/environment
 | **Milestone** | M4 |
 
 Tagged nodes: `succeed` \| `defer` \| `bind` \| `use` \| `provide` with `Map` environment.
+
+---
+
+## 7.7 `Async` + `wrap`
+
+| | |
+|---|---|
+| **Status** | **Done** (MVP) |
+| **Milestone** | post-M4 |
+
+**What it should look like.**
+
+```ts
+import { wrap } from "@thunk/runtime"
+
+const program = thunk {
+  const n = run wrap(() => Promise.resolve(1))
+  return n + 1
+}
+
+const result: Promise<number> = run program
+```
+
+**Cases**
+
+| Example | Expected |
+|---|---|
+| `wrap(() => Promise.resolve(x))` | `Thunk<typeof x> Async` |
+| `execute` / top-level `run` of Async thunk | `Promise<T>` |
+| Sync thunk `execute` | still plain `T` |
+| Promise rejection | throws branded `UnhandledError` |
+| Machine with `run wrap(...)` | collapses `Async` onto the machine type |
+
+See [language-reference/core/wrap.md](./language-reference/core/wrap.md), [language-reference/types/async.md](./language-reference/types/async.md).
 
 ---
 
@@ -1089,14 +1123,14 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 
 | Feature | Notes |
 |---|---|
-| Typed error channels / error handling semantics | Later protocol or ops |
+| Typed error channels / error handling semantics | Later protocol or ops; Failure tree + `UnhandledError` from `wrap` are the bare minimum |
 | Cancellation | Later |
-| Asynchronous execution | Later |
+| Asynchronous execution | **Partial** — `Async` + `wrap` + async `execute` |
 | Concurrency / parallel composition | Later |
 | Resource scopes / ownership / linear usage | Later |
 | Synchronization / locking | Later |
 | Actor systems | Later |
-| Effect tracking beyond `Requires` | Later |
+| Effect tracking beyond `Requires` | Partial — `Async` flag shipped; more later |
 | Advanced protocol interoperability | Later |
 | `run` in arbitrary expressions / full CFG | After solid statement-position machine; ANF for expr `run` |
 | `try` / `catch` / `finally` in thunks | Separate design (handler/finalizer state) |
@@ -1132,6 +1166,6 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
-| Errors / async / concurrency / resources / … | Deferred | later |
+| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure tree) | later |
 
 **Next implementation focus:** M2 (pipes / multi-`run` hardening); deepen `protocol` decls so generated type functions drive merge instead of hard-coded `Requires` only.

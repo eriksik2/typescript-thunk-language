@@ -116,7 +116,11 @@ symbol Defect extends Failure
     expect(lowered.generatedText).toContain("abstract: true");
     expect(lowered.generatedText).toContain("parent: Failure");
     expect(lowered.generatedText).toContain("__abstract: true");
-    expect(lowered.generatedText).toContain("type Defect = Failure &");
+    expect(lowered.generatedText).toContain("__parent?: typeof Failure");
+    expect(lowered.generatedText).toMatch(
+      /type Defect = \{\s*message:\s*string\s*\} &/,
+    );
+    expect(lowered.generatedText).not.toMatch(/type Defect = Failure &/);
     expect(lowered.generatedText).toContain("__brand_Defect");
     expect(lowered.generatedText).toMatch(
       /__makeSymbol<\{\s*message:\s*string\s*\}>\("Defect"/,

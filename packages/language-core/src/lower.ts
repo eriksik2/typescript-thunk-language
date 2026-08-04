@@ -380,6 +380,7 @@ class Emitter {
   private character = 0;
   private needsThunkType = false;
   private needsRequiresType = false;
+  private needsAsyncType = false;
   private needsMakeSymbol = false;
   private needsThunkReturnType = false;
   private needsSymbolType = false;
@@ -398,6 +399,7 @@ class Emitter {
     const typesNeeded = fileNeedsTypesImport(ast);
     this.needsThunkType = typesNeeded.thunk;
     this.needsRequiresType = typesNeeded.requires;
+    this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
     this.collectSymbolDecls(ast);
@@ -428,12 +430,14 @@ class Emitter {
     if (
       this.needsThunkType ||
       this.needsRequiresType ||
+      this.needsAsyncType ||
       this.needsThunkReturnType ||
       this.needsSymbolType
     ) {
       const typeNames: string[] = [];
       if (this.needsThunkType) typeNames.push("Thunk");
       if (this.needsRequiresType) typeNames.push("Requires");
+      if (this.needsAsyncType) typeNames.push("Async");
       if (this.needsThunkReturnType) typeNames.push("ThunkReturnType");
       if (this.needsSymbolType) typeNames.push("SymbolType");
       this.write(
@@ -557,7 +561,12 @@ class Emitter {
     if (decl.isAbstract) {
       this.write("{ readonly key: symbol; readonly __assoc: ");
       this.writeMapped(assoc, assocRange);
-      this.write("; readonly __abstract: true }");
+      this.write('; readonly __thunkSymbol?: "ThunkSymbol"; readonly __abstract: true');
+      if (parentName) {
+        this.write("; readonly __parent?: typeof ");
+        this.writeMapped(parentName, decl.extendsName!.range);
+      }
+      this.write(" }");
     } else {
       this.write("((value: ");
       this.writeMapped(assoc, assocRange);
@@ -566,24 +575,21 @@ class Emitter {
       this.write(") & { readonly key: symbol; readonly __assoc: ");
       this.writeMapped(assoc, assocRange);
       this.write(" }");
+      if (parentName) {
+        this.write(" & { readonly __parent?: typeof ");
+        this.writeMapped(parentName, decl.extendsName!.range);
+        this.write(" }");
+      }
     }
     this.write(";\n");
 
-    // Branded type — intersect parent for LSP when extending
+    // Branded type — own brand only (no parent intersection / no value LSP).
+    // Associated type still merges parent fields for the payload shape.
     this.write("type ");
     this.writeMapped(name, decl.name.range);
     this.write(" = ");
-    if (parentName) {
-      this.writeMapped(parentName, decl.extendsName!.range);
-      this.write(" & ");
-      if (decl.associatedType && !emptyObjectType(decl.associatedType.text)) {
-        this.writeMapped(decl.associatedType.text, decl.associatedType.range);
-        this.write(" & ");
-      }
-    } else {
-      this.writeMapped(assoc, assocRange);
-      this.write(" & ");
-    }
+    this.writeMapped(assoc, assocRange);
+    this.write(" & ");
     this.write(
       `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
     );
@@ -1109,12 +1115,14 @@ function exprHasRun(expr: Expression): boolean {
 function fileNeedsTypesImport(ast: SourceFile): {
   thunk: boolean;
   requires: boolean;
+  async: boolean;
 } {
   let thunk = false;
   let requires = false;
+  let async = false;
   for (const stmt of ast.statements) {
     if (stmt.kind === "VariableStatement" && stmt.typeAnnotation) {
-      const { needsTypesImport } = encodeThunkTypeAnnotation(
+      const { needsTypesImport, needsAsyncImport } = encodeThunkTypeAnnotation(
         stmt.typeAnnotation.baseText,
         stmt.typeAnnotation.protocols,
       );
@@ -1122,6 +1130,11 @@ function fileNeedsTypesImport(ast: SourceFile): {
         requires = true;
         thunk = true;
       }
+      if (stmt.typeAnnotation.protocols.some((p) => p.name === "Async")) {
+        async = true;
+        thunk = true;
+      }
+      if (needsAsyncImport) async = true;
       if (needsTypesImport || /Thunk\s*</.test(stmt.typeAnnotation.baseText)) {
         thunk = true;
       }
@@ -1133,7 +1146,7 @@ function fileNeedsTypesImport(ast: SourceFile): {
       }
     }
   }
-  return { thunk, requires };
+  return { thunk, requires, async };
 }
 
 export function lowerSourceFile(

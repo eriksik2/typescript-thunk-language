@@ -8,6 +8,8 @@ export interface EncodedProtocolBag {
   /** Type text for the second type arg of Thunk, or undefined if empty. */
   readonly bagType?: string;
   readonly needsTypesImport: boolean;
+  /** When true, lowerer should import `Async` from `@thunk/types`. */
+  readonly needsAsyncImport?: boolean;
 }
 
 /**
@@ -73,12 +75,15 @@ export function encodeProtocolBag(
 
   const requiresPayloads: string[] = [];
   const flags = new Set<string>();
+  let hasAsync = false;
 
   for (const p of protocols) {
     if (p.name === "Requires") {
       if (p.payload && p.payload.trim()) {
         requiresPayloads.push(encodeRequiresPayload(p.payload.trim()));
       }
+    } else if (p.name === "Async") {
+      hasAsync = true;
     } else {
       flags.add(p.name);
     }
@@ -89,6 +94,9 @@ export function encodeProtocolBag(
     members.push(`readonly [Requires]: ${requiresPayloads[0]}`);
   } else if (requiresPayloads.length > 1) {
     members.push(`readonly [Requires]: ${requiresPayloads.join(" | ")}`);
+  }
+  if (hasAsync) {
+    members.push(`readonly [Async]: void`);
   }
   for (const flag of flags) {
     members.push(`readonly ${flag}: void`);
@@ -101,6 +109,7 @@ export function encodeProtocolBag(
   return {
     bagType: `{ ${members.join("; ")} }`,
     needsTypesImport: true,
+    needsAsyncImport: hasAsync,
   };
 }
 
@@ -111,24 +120,38 @@ export function encodeProtocolBag(
 export function encodeThunkTypeAnnotation(
   baseText: string,
   protocols: readonly ProtocolClause[],
-): { typeText: string; needsTypesImport: boolean } {
+): {
+  typeText: string;
+  needsTypesImport: boolean;
+  needsAsyncImport: boolean;
+} {
   const encoded = encodeProtocolBag(protocols);
   const base = baseText.trim();
   const thunkMatch = /^Thunk\s*<([\s\S]*)>$/.exec(base);
+  const needsAsyncImport = encoded.needsAsyncImport === true;
 
   if (!thunkMatch) {
     // Non-Thunk annotation: emit base as-is; postfix only meaningful on Thunk
     if (protocols.length === 0) {
-      return { typeText: base, needsTypesImport: false };
+      return {
+        typeText: base,
+        needsTypesImport: false,
+        needsAsyncImport: false,
+      };
     }
     // Still attach bag as intersection brand if someone wrote `Foo Requires(A)` — uncommon
     if (encoded.bagType) {
       return {
         typeText: `${base} & { __protocols: ${encoded.bagType} }`,
         needsTypesImport: true,
+        needsAsyncImport,
       };
     }
-    return { typeText: base, needsTypesImport: encoded.needsTypesImport };
+    return {
+      typeText: base,
+      needsTypesImport: encoded.needsTypesImport,
+      needsAsyncImport,
+    };
   }
 
   const inner = thunkMatch[1]!.trim();
@@ -138,12 +161,14 @@ export function encodeThunkTypeAnnotation(
     return {
       typeText: `Thunk<${yieldType}>`,
       needsTypesImport: true,
+      needsAsyncImport: false,
     };
   }
 
   return {
     typeText: `Thunk<${yieldType}, ${encoded.bagType}>`,
     needsTypesImport: true,
+    needsAsyncImport,
   };
 }
 

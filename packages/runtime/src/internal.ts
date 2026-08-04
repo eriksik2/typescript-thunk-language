@@ -4,20 +4,24 @@
  */
 
 import type {
+  BrandCarrier,
   EmptyProtocols,
   ExecuteResult,
   GetRequires,
+  HasAsync,
   IdentityCarrier,
   MergeProtocols,
   Protocol,
   ProtocolBag,
   ProvideRequires,
   Requires,
+  Async,
   SymbolOfValue,
   SymbolType,
   Thunk,
   ThunkReturnType,
   ThunkSymbol,
+  WithAsync,
   WithRequires,
 } from "@thunk/types";
 
@@ -30,7 +34,8 @@ type ThunkNode<T> =
   | RunEffectNode<unknown>
   | MachineNode<T>
   | UseNode<T>
-  | ProvideNode<T>;
+  | ProvideNode<T>
+  | AwaitPromiseNode<T>;
 
 interface SucceedNode<T> {
   readonly kind: "succeed";
@@ -74,6 +79,14 @@ interface ProvideNode<T> {
   readonly layer: Layer<any>;
 }
 
+/** Promise bridge — introduced by `wrap`. */
+interface AwaitPromiseNode<T> {
+  readonly kind: "awaitPromise";
+  readonly factory: () => Promise<T>;
+  /** Throws (typically `UnhandledError`) — typed as `never`. */
+  readonly onReject: (reason: unknown) => never;
+}
+
 function asThunk<T, P extends ProtocolBag = EmptyProtocols>(
   node: ThunkNode<T>,
 ): Thunk<T, P> {
@@ -88,10 +101,10 @@ function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
  * Options for `__makeSymbol` (hierarchical / abstract symbols).
  */
 export type MakeSymbolOptions = {
-  /** Not callable — cannot brand values. Still usable with `Symbol.is`. */
+  /** Not callable — cannot brand values. Still usable with `Symbol.has`. */
   readonly abstract?: boolean;
-  /** Parent identity for Liskov hierarchy (`Symbol.is` / `Symbol.extends`). */
-  readonly parent?: ThunkSymbol<any>;
+  /** Parent identity for hierarchy (`Symbol.has` / `Symbol.extends` / `Symbol.to`). */
+  readonly parent?: { readonly key: symbol };
 };
 
 /** Runtime parent links for hierarchical symbols. */
@@ -103,6 +116,7 @@ const parentByIdentity = new WeakMap<ThunkSymbol<any>, ThunkSymbol<any>>();
  * Branding stamps the identity onto object values so `Symbol.of` / `provide` work.
  *
  * Abstract symbols return a non-callable identity (still has `.key` / parent link).
+ * Hierarchy typing (`__parent`) is applied by the lowerer cast / author casts.
  */
 export function __makeSymbol<T>(
   name: string,
@@ -138,7 +152,16 @@ export function __makeSymbol<T>(
   });
 
   if (options?.parent) {
-    parentByIdentity.set(identity, options.parent);
+    parentByIdentity.set(
+      identity,
+      options.parent as ThunkSymbol<any>,
+    );
+    Object.defineProperty(identity, "__parent", {
+      value: options.parent,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
   }
 
   return identity;
@@ -207,10 +230,17 @@ export function symbolOf<V>(value: V): SymbolOfValue<V> {
 }
 
 /**
- * Hierarchical test: true when `value` was branded with `sym` or a descendant.
- * `Symbol.is(defect, Failure)` is true when `Defect extends Failure`.
+ * Exact identity test: true only when `Symbol.of(value) === sym`.
  */
 export function symbolIs(value: unknown, sym: ThunkSymbol<any>): boolean {
+  const id = readIdentity(value);
+  return id === sym;
+}
+
+/**
+ * Hierarchy test: true when the leaf identity is `sym` or extends it.
+ */
+export function symbolHas(value: unknown, sym: ThunkSymbol<any>): boolean {
   const id = readIdentity(value);
   if (!id) return false;
   return isAncestorOrSelf(id, sym);
@@ -226,12 +256,23 @@ export function symbolExtends(
   return isAncestorOrSelf(child, parent);
 }
 
-/** Namespace alias: `Symbol.of` / `Symbol.is` / `Symbol.extends`. */
-export const Symbol = {
-  of: symbolOf,
-  is: symbolIs,
-  extends: symbolExtends,
-} as const;
+/**
+ * Checked upcast along the symbol hierarchy.
+ * Runtime: requires `Symbol.has(value, sym)`; otherwise calls `onFail` (typically `Defect`).
+ * Does not re-stamp — `Symbol.of` stays the leaf identity.
+ */
+export function symbolTo<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+  onFail: (message: string) => never,
+): SymbolType<S> & BrandCarrier<SymbolType<S>> {
+  if (!symbolHas(value, sym)) {
+    const name =
+      typeof sym.key.description === "string" ? sym.key.description : "symbol";
+    onFail(`Symbol.to: value is not in the hierarchy of ${name}`);
+  }
+  return value as SymbolType<S> & BrandCarrier<SymbolType<S>>;
+}
 
 /**
  * @deprecated Prefer `symbol` declarations (lowered via `__makeSymbol`).
@@ -303,14 +344,16 @@ type ProtocolsOfStep<R> =
 
 /**
  * Collapse a union of protocol bags (from machine step return paths).
- * Emit a structural `{ readonly [Requires]: … }` bag (same shape as
- * `MergeProtocols`) so hover pretty-printing recognizes `Requires(…)`.
+ * Keep `Requires` (union) and `Async` if any path carries it.
  */
-type CollapseProtocolUnion<P extends ProtocolBag> = [GetRequires<P>] extends [
-  never,
-]
-  ? EmptyProtocols
-  : { readonly [Requires]: GetRequires<P> };
+type CollapseProtocolUnion<P extends ProtocolBag> = SimplifyEmptyBag<
+  ([GetRequires<P>] extends [never]
+    ? EmptyProtocols
+    : { readonly [Requires]: GetRequires<P> }) &
+    (HasAsync<P> extends true ? { readonly [Async]: void } : EmptyProtocols)
+>;
+
+type SimplifyEmptyBag<P> = keyof P extends never ? EmptyProtocols : P;
 
 /**
  * Suspend the current state machine: execute `source`, then resume `step`
@@ -335,6 +378,20 @@ export function machine<R extends StepResult>(
   return asThunk({
     kind: "machine",
     step: (resume) => asNode(step(resume) as unknown as Thunk<any, any>),
+  });
+}
+
+/**
+ * Internal: Promise → thunk node with `Async`. Used by author-facing `wrap`.
+ */
+export function __awaitPromise<T>(
+  factory: () => Promise<T>,
+  onReject: (reason: unknown) => never,
+): Thunk<T, WithAsync> {
+  return asThunk({
+    kind: "awaitPromise",
+    factory,
+    onReject,
   });
 }
 
@@ -421,8 +478,10 @@ function isLayer(value: unknown): value is Layer<any> {
 }
 
 /**
- * Run a thunk to a value.
- * Type-level: fails with `CompileError` when `Requires` remain.
+ * Run a thunk to completion.
+ * Type-level: `CompileError` when `Requires` remain; `Promise<T>` when `Async`.
+ * Runtime: returns `T` synchronously when no Promise suspension occurs;
+ * returns a `Promise` once an `awaitPromise` / thenable path is taken.
  */
 export function execute<T, P extends ProtocolBag>(
   thunk: Thunk<T, P>,
@@ -431,7 +490,18 @@ export function execute<T, P extends ProtocolBag>(
   return executeNode(asNode(thunk), env) as ExecuteResult<T, P>;
 }
 
-function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === "function"
+  );
+}
+
+function executeNode<T>(
+  thunk: ThunkNode<T>,
+  env: Environment,
+): T | Promise<T> {
   let current: ThunkNode<any> = thunk;
   for (;;) {
     switch (current.kind) {
@@ -440,8 +510,27 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
       case "defer":
         current = current.factory();
         continue;
+      case "awaitPromise": {
+        const { factory, onReject } = current;
+        let promise: Promise<any>;
+        try {
+          promise = factory();
+        } catch (err) {
+          onReject(err);
+        }
+        return promise.then(
+          (value) => value as T,
+          (reason) => onReject(reason),
+        );
+      }
       case "bind": {
         const value = executeNode(current.source, env);
+        if (isThenable(value)) {
+          const cont = current.continuation;
+          return Promise.resolve(value).then((v) =>
+            executeNode(cont(v), env),
+          ) as Promise<T>;
+        }
         current = current.continuation(value);
         continue;
       }
@@ -449,24 +538,8 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
         throw new Error(
           "runEffect is only valid inside a machine step (suspend)",
         );
-      case "machine": {
-        let resume: unknown = undefined;
-        for (;;) {
-          let next: ThunkNode<any> = current.step(resume);
-          while (next.kind === "defer") {
-            next = next.factory();
-          }
-          if (next.kind === "succeed") {
-            return next.value as T;
-          }
-          if (next.kind === "runEffect") {
-            resume = executeNode(next.source, env);
-            continue;
-          }
-          // Nested machine / bind / use / provide — run to completion.
-          return executeNode(next, env) as T;
-        }
-      }
+      case "machine":
+        return runMachine(current, env);
       case "use": {
         if (!env.has(current.sym.key)) {
           throw new Error(
@@ -488,6 +561,35 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
   }
 }
 
+function runMachine<T>(
+  machineNode: MachineNode<T>,
+  env: Environment,
+  resume: unknown = undefined,
+): T | Promise<T> {
+  let currentResume = resume;
+  for (;;) {
+    let next: ThunkNode<any> = machineNode.step(currentResume);
+    while (next.kind === "defer") {
+      next = next.factory();
+    }
+    if (next.kind === "succeed") {
+      return next.value as T;
+    }
+    if (next.kind === "runEffect") {
+      const value = executeNode(next.source, env);
+      if (isThenable(value)) {
+        return Promise.resolve(value).then((v) =>
+          runMachine(machineNode, env, v),
+        );
+      }
+      currentResume = value;
+      continue;
+    }
+    // Nested machine / bind / use / provide / awaitPromise — run to completion.
+    return executeNode(next, env) as T | Promise<T>;
+  }
+}
+
 export type {
   Thunk,
   EmptyProtocols,
@@ -499,9 +601,12 @@ export type {
   SymbolOfValue,
   IdentityCarrier,
   WithRequires,
+  WithAsync,
   ProvideRequires,
   ThunkReturnType,
   Protocol,
+  HasAsync,
+  Async,
 };
 
 export type { Suspend };

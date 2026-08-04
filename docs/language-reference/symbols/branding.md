@@ -35,11 +35,12 @@ symbol Defect extends Failure
 
 const d = Defect({ message: "boom" })
 // Failure({ message: "x" }) // runtime error
+// const f: Failure = d      // type error — use Symbol.to(d, Failure)
 ```
 
 ## Related
 
 - [symbol declarations](./symbol-declarations.md)
 - [Symbol.of](./symbol-of.md)
-- [Symbol.is](./symbol-is.md)
+- [Symbol.is / has / to](./symbol-is.md)
 - [provide](../environment/provide.md)

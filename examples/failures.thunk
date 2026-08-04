@@ -12,18 +12,27 @@ import {
   Symbol,
 } from "@thunk/runtime"
 
-const defect: Failure = Defect({ message: "invariant violated" })
-const unhandled: Failure = UnhandledError({ message: "promise rejected" })
-const err: Failure = Error({ message: "not found" })
+const defect = Defect({ message: "invariant violated" })
+const unhandled = UnhandledError({ message: "promise rejected" })
+const err = Error({ message: "not found" })
 
 const checks = thunk {
-  const a = Symbol.is(defect, Failure)
+  const a = Symbol.has(defect, Failure)
   const b = Symbol.is(defect, Defect)
-  const c = Symbol.is(defect, UnhandledError)
-  const d = Symbol.is(unhandled, Failure)
-  const e = Symbol.is(err, Error)
+  const c = Symbol.is(defect, Failure)
+  const d = Symbol.has(unhandled, Failure)
+  const e = Symbol.has(err, Error)
+  const asFailure = Symbol.to(defect, Failure)
   const leaf = Symbol.of(defect)
-  return { a, b, c, d, e, leafIsDefect: leaf === Defect }
+  return {
+    a,
+    b,
+    c,
+    d,
+    e,
+    leafIsDefect: leaf === Defect,
+    asFailureMessage: asFailure.message,
+  }
 }
 
 const result = run checks

@@ -50,6 +50,12 @@ describe("formatThunkType", () => {
     expect(formatThunkType("T", "{ Once: void }")).toBe("Thunk<T>\n  Once");
   });
 
+  test("Async flag from [Async]: void", () => {
+    expect(formatThunkType("number", "{ readonly [Async]: void }")).toBe(
+      "Thunk<number>\n  Async",
+    );
+  });
+
   test("Requires + Once together", () => {
     expect(
       formatThunkType(
