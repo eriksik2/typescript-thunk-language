@@ -21,7 +21,7 @@ Do **not** write `run somePromise` — keep Thunk and Promise distinct. Sequenci
 
 ## Failures
 
-Promise rejection throws a branded [`UnhandledError`](../symbols/failure-hierarchy.md) (`Symbol.is(err, UnhandledError)`). Full typed catch channels are deferred.
+Promise rejection throws a branded [`UnhandledError`](../symbols/failure-hierarchy.md) (`Symbol.is(err, UnhandledError)` / `Symbol.has(err, Failure)`). Full typed catch channels are deferred.
 
 ## Examples
 

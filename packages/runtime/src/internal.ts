@@ -4,6 +4,7 @@
  */
 
 import type {
+  BrandCarrier,
   EmptyProtocols,
   ExecuteResult,
   GetRequires,
@@ -100,10 +101,10 @@ function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
  * Options for `__makeSymbol` (hierarchical / abstract symbols).
  */
 export type MakeSymbolOptions = {
-  /** Not callable — cannot brand values. Still usable with `Symbol.is`. */
+  /** Not callable — cannot brand values. Still usable with `Symbol.has`. */
   readonly abstract?: boolean;
-  /** Parent identity for Liskov hierarchy (`Symbol.is` / `Symbol.extends`). */
-  readonly parent?: ThunkSymbol<any>;
+  /** Parent identity for hierarchy (`Symbol.has` / `Symbol.extends` / `Symbol.to`). */
+  readonly parent?: { readonly key: symbol };
 };
 
 /** Runtime parent links for hierarchical symbols. */
@@ -115,6 +116,7 @@ const parentByIdentity = new WeakMap<ThunkSymbol<any>, ThunkSymbol<any>>();
  * Branding stamps the identity onto object values so `Symbol.of` / `provide` work.
  *
  * Abstract symbols return a non-callable identity (still has `.key` / parent link).
+ * Hierarchy typing (`__parent`) is applied by the lowerer cast / author casts.
  */
 export function __makeSymbol<T>(
   name: string,
@@ -150,7 +152,16 @@ export function __makeSymbol<T>(
   });
 
   if (options?.parent) {
-    parentByIdentity.set(identity, options.parent);
+    parentByIdentity.set(
+      identity,
+      options.parent as ThunkSymbol<any>,
+    );
+    Object.defineProperty(identity, "__parent", {
+      value: options.parent,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
   }
 
   return identity;
@@ -219,10 +230,17 @@ export function symbolOf<V>(value: V): SymbolOfValue<V> {
 }
 
 /**
- * Hierarchical test: true when `value` was branded with `sym` or a descendant.
- * `Symbol.is(defect, Failure)` is true when `Defect extends Failure`.
+ * Exact identity test: true only when `Symbol.of(value) === sym`.
  */
 export function symbolIs(value: unknown, sym: ThunkSymbol<any>): boolean {
+  const id = readIdentity(value);
+  return id === sym;
+}
+
+/**
+ * Hierarchy test: true when the leaf identity is `sym` or extends it.
+ */
+export function symbolHas(value: unknown, sym: ThunkSymbol<any>): boolean {
   const id = readIdentity(value);
   if (!id) return false;
   return isAncestorOrSelf(id, sym);
@@ -238,12 +256,23 @@ export function symbolExtends(
   return isAncestorOrSelf(child, parent);
 }
 
-/** Namespace alias: `Symbol.of` / `Symbol.is` / `Symbol.extends`. */
-export const Symbol = {
-  of: symbolOf,
-  is: symbolIs,
-  extends: symbolExtends,
-} as const;
+/**
+ * Checked upcast along the symbol hierarchy.
+ * Runtime: requires `Symbol.has(value, sym)`; otherwise calls `onFail` (typically `Defect`).
+ * Does not re-stamp — `Symbol.of` stays the leaf identity.
+ */
+export function symbolTo<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+  onFail: (message: string) => never,
+): SymbolType<S> & BrandCarrier<SymbolType<S>> {
+  if (!symbolHas(value, sym)) {
+    const name =
+      typeof sym.key.description === "string" ? sym.key.description : "symbol";
+    onFail(`Symbol.to: value is not in the hierarchy of ${name}`);
+  }
+  return value as SymbolType<S> & BrandCarrier<SymbolType<S>>;
+}
 
 /**
  * @deprecated Prefer `symbol` declarations (lowered via `__makeSymbol`).

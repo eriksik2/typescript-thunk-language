@@ -848,8 +848,8 @@ const db = run use(Database)
 | `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
 | `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
-| `abstract symbol` | Not callable; still a type / `Symbol.is` target |
-| `symbol Child extends Parent` | Child type <: Parent; `Symbol.is(child, Parent)`; env keys stay exact |
+| `abstract symbol` | Not callable; still a type / `Symbol.has` / `Symbol.to` target |
+| `symbol Child extends Parent` | Pedigree for `has` / `to`; **no** value assignability to Parent; env keys stay exact |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
 Built-in Failure tree: see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).

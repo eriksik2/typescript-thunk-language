@@ -17,7 +17,7 @@
 | [run](./core/run.md) | core |
 | [Runtime packages](./modules/runtime-packages.md) | modules |
 | [symbol declarations](./symbols/symbol-declarations.md) | symbols |
-| [Symbol.is](./symbols/symbol-is.md) | symbols |
+| [Symbol.is / has / to](./symbols/symbol-is.md) | symbols |
 | [Symbol.of](./symbols/symbol-of.md) | symbols |
 | [Thunk blocks](./core/thunk-blocks.md) | core |
 | [Thunk type](./types/thunk-type.md) | types |

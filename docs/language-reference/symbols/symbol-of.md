@@ -16,7 +16,7 @@ symbolOf(DatabaseLive)    // same
 
 - Works for values branded via `Name(...)` when the associated value is an **object** (identity is stamped at brand time).
 - Throws if the value does not carry an identity (e.g. naked primitives).
-- Returns the **most specific** (leaf) identity — use [`Symbol.is`](./symbol-is.md) for hierarchical tests.
+- Returns the **most specific** (leaf) identity — use [`Symbol.has`](./symbol-is.md) for hierarchy, [`Symbol.is`](./symbol-is.md) for exact match.
 - Type-level: `SymbolOfValue<typeof DatabaseLive>` is `typeof Database`.
 
 ## Why it exists
