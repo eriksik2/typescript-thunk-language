@@ -1,5 +1,8 @@
 /**
  * Lower Thunk AST → TypeScript text + source maps.
+ *
+ * Thunk bodies with `run` lower to an iterative switch-based state machine
+ * (`machine` + `runEffect` + `succeed`), not recursive `bind` continuations.
  */
 
 import type {
@@ -33,6 +36,23 @@ export interface LowerOptions {
   typesImportPath?: string;
 }
 
+type RunSite =
+  | {
+      kind: "binding";
+      name: string;
+      nameRange: Range;
+      source: Expression;
+      typeAnnotation?: TypeAnnotation;
+    }
+  | { kind: "discard"; source: Expression }
+  | { kind: "return"; source: Expression };
+
+/** One state: ordinary statements, then optional suspending `run`. */
+interface MachinePart {
+  readonly prelude: Statement[];
+  readonly run: RunSite | null;
+}
+
 class Emitter {
   private chunks: string[] = [];
   private mappings: Mapping[] = [];
@@ -41,6 +61,7 @@ class Emitter {
   private needsThunkType = false;
   private needsRequiresType = false;
   private needsMakeSymbol = false;
+  private needsThunkReturnType = false;
 
   constructor(
     private readonly originalText: string,
@@ -63,7 +84,17 @@ class Emitter {
       this.emitImportDeclaration(imp);
     }
 
-    const internalNames = ["succeed", "defer", "bind", "execute"];
+    // First pass buffer: emit body into a side channel? We need to know
+    // needsThunkReturnType before writing imports. Scan AST for runs in thunks.
+    this.needsThunkReturnType = fileHasRunInThunk(ast);
+
+    const internalNames = [
+      "succeed",
+      "defer",
+      "runEffect",
+      "machine",
+      "execute",
+    ];
     if (this.needsMakeSymbol) {
       internalNames.push("__makeSymbol");
     }
@@ -71,10 +102,15 @@ class Emitter {
       `import { ${internalNames.join(", ")} } from "${this.internalImportPath}";\n`,
     );
 
-    if (this.needsThunkType || this.needsRequiresType) {
+    if (
+      this.needsThunkType ||
+      this.needsRequiresType ||
+      this.needsThunkReturnType
+    ) {
       const typeNames: string[] = [];
       if (this.needsThunkType) typeNames.push("Thunk");
       if (this.needsRequiresType) typeNames.push("Requires");
+      if (this.needsThunkReturnType) typeNames.push("ThunkReturnType");
       this.write(
         `import type { ${typeNames.join(", ")} } from "${this.typesImportPath}";\n`,
       );
@@ -221,72 +257,181 @@ class Emitter {
   }
 
   private emitThunkBody(body: Statement[]): void {
-    const runIndex = body.findIndex(isRunBindingStatement);
-    if (runIndex === -1) {
+    if (!body.some(isRunBindingStatement)) {
       this.emitPureBody(body);
       return;
     }
+    this.emitStateMachine(body);
+  }
 
-    const before = body.slice(0, runIndex);
-    const runStmt = body[runIndex]!;
-    const after = body.slice(runIndex + 1);
-    const needsBlock = before.length > 0;
+  /**
+   * Iterative switch-based state machine:
+   *
+   *   let __state = 0;
+   *   let user: ThunkReturnType<…>;
+   *   return machine(function (__resume) {
+   *     while (true) {
+   *       switch (__state) {
+   *         case 0:
+   *           __state = 1;
+   *           return runEffect(getUser());
+   *         case 1:
+   *           user = __resume as …;
+   *           return succeed(user.name);
+   *       }
+   *     }
+   *   });
+   */
+  private emitStateMachine(body: Statement[]): void {
+    const parts = splitMachineParts(body);
+    const runSites = parts
+      .map((p) => p.run)
+      .filter((r): r is RunSite => r !== null);
 
-    if (needsBlock) {
-      this.write("{\n");
-      for (const stmt of before) {
-        this.emitOrdinaryStatementInThunk(stmt);
+    this.write("{\n");
+    this.write("let __state = 0;\n");
+
+    // Witnesses + run bindings interleaved so later witnesses may reference
+    // earlier resume locals (`getPosts(user.id)`). Ordinary locals next.
+    this.emitHoistedLocals(body, runSites);
+
+    this.write("return machine(function (__resume?: any) {\n");
+    this.write("while (true) {\n");
+    this.write("switch (__state) {\n");
+
+    let runIndex = 0;
+    for (let state = 0; state < parts.length; state++) {
+      const part = parts[state]!;
+      this.write(`case ${state}:\n`);
+
+      // Resume from previous run into its binding (states > 0).
+      if (state > 0) {
+        const prevRun = parts[state - 1]!.run;
+        if (prevRun?.kind === "binding") {
+          const t = runIndex - 1;
+          this.writeMapped(prevRun.name, prevRun.nameRange);
+          this.write(
+            ` = __resume as ThunkReturnType<NonNullable<typeof __t${t}>>;\n`,
+          );
+        } else if (prevRun?.kind === "return") {
+          this.write("return succeed(__resume);\n");
+          // Still emit break-style unreachable default for exhaustiveness.
+          this.write("break;\n");
+          continue;
+        }
+        // discard: ignore __resume
       }
-      this.write("return ");
+
+      for (const stmt of part.prelude) {
+        this.emitMachineStatement(stmt);
+      }
+
+      if (part.run) {
+        this.write(`__state = ${state + 1};\n`);
+        this.write("return runEffect(");
+        this.emitValueExpression(part.run.source);
+        this.write(");\n");
+        runIndex++;
+      } else {
+        // Final region — succeed with last return or void.
+        this.emitFinalSucceed(part.prelude);
+      }
     }
 
-    let bindSource: Expression;
-    let bindName: string | undefined;
-    let bindNameRange: Range | undefined;
+    this.write("default:\n");
+    this.write('throw new Error("invalid thunk state");\n');
+    this.write("}\n");
+    this.write("}\n");
+    this.write("});\n");
+    this.write("}");
+  }
 
-    if (runStmt.kind === "VariableStatement") {
-      if (runStmt.initializer.kind !== "RunExpression") {
-        throw new Error("expected run initializer");
+  private emitHoistedLocals(body: Statement[], runSites: RunSite[]): void {
+    // Ordinary locals first so early witnesses can close over them if needed.
+    for (const stmt of body) {
+      if (stmt.kind !== "VariableStatement") continue;
+      if (stmt.initializer.kind === "RunExpression") continue;
+      this.write("let ");
+      this.writeMapped(stmt.name.name, stmt.name.range);
+      if (stmt.typeAnnotation) {
+        this.write(": ");
+        this.emitTypeAnnotation(stmt.typeAnnotation);
       }
-      bindName = runStmt.name.name;
-      bindNameRange = runStmt.name.range;
-      bindSource = runStmt.initializer.expression;
-    } else if (
-      runStmt.kind === "ExpressionStatement" &&
-      runStmt.expression.kind === "RunExpression"
-    ) {
-      bindSource = runStmt.expression.expression;
-    } else if (
-      runStmt.kind === "ReturnStatement" &&
-      runStmt.expression.kind === "RunExpression"
-    ) {
-      // `return run expr` ≈ await in return position: bind then succeed.
-      this.write("bind(");
-      this.emitValueExpression(runStmt.expression.expression);
-      this.write(", __v => succeed(__v))");
-      if (needsBlock) {
-        this.write(";\n}");
+      this.write(";\n");
+    }
+
+    // Each run: dead type witness, then typed `let` for the binding (if any).
+    runSites.forEach((run, i) => {
+      this.write(`const __t${i} = false ? `);
+      this.emitValueExpression(run.source);
+      this.write(" : undefined;\n");
+      if (run.kind === "binding") {
+        this.write("let ");
+        this.writeMapped(run.name, run.nameRange);
+        if (run.typeAnnotation) {
+          this.write(": ");
+          this.emitTypeAnnotation(run.typeAnnotation);
+        } else {
+          this.write(
+            `: ThunkReturnType<NonNullable<typeof __t${i}>>`,
+          );
+        }
+        this.write(";\n");
       }
+    });
+  }
+
+  private emitMachineStatement(stmt: Statement): void {
+    switch (stmt.kind) {
+      case "VariableStatement": {
+        if (stmt.initializer.kind === "RunExpression") {
+          throw new Error("internal: run should be a machine part boundary");
+        }
+        this.writeMapped(stmt.name.name, stmt.name.range);
+        this.write(" = ");
+        if (stmt.initializer.kind === "ThunkExpression") {
+          this.emitThunk(stmt.initializer);
+        } else {
+          this.emitValueExpression(stmt.initializer);
+        }
+        this.write(";\n");
+        return;
+      }
+      case "ExpressionStatement": {
+        this.emitValueExpression(stmt.expression);
+        this.write(";\n");
+        return;
+      }
+      case "ReturnStatement":
+        // Returns in prelude of a non-final part are unusual; treat as succeed.
+        this.write("return succeed(");
+        this.emitValueExpression(stmt.expression);
+        this.write(");\n");
+        return;
+      case "ProtocolDeclaration":
+        throw new Error("protocol declarations are only valid at top level");
+      case "SymbolDeclaration":
+        throw new Error("symbol declarations are only valid at top level");
+      case "ImportDeclaration":
+        throw new Error("import declarations are only valid at top level");
+    }
+  }
+
+  /**
+   * Final state succeed. Prelude was already emitted; if it contained a
+   * `return`, that emitted `return succeed(...)`. Otherwise succeed void.
+   * When the last prelude stmt was a return we already returned; detect via
+   * re-scan — actually emitFinalSucceed is only called when run is null,
+   * and we've already emitted all prelude stmts. So if the last stmt was
+   * ReturnStatement, we already emitted return succeed. If not, emit void.
+   */
+  private emitFinalSucceed(prelude: Statement[]): void {
+    const last = prelude[prelude.length - 1];
+    if (last?.kind === "ReturnStatement") {
+      // Already emitted as return succeed in emitMachineStatement.
       return;
-    } else {
-      throw new Error("run must be in statement position");
     }
-
-    this.write("bind(");
-    this.emitValueExpression(bindSource);
-    this.write(", ");
-    if (bindName && bindNameRange) {
-      this.writeMapped(bindName, bindNameRange);
-    } else {
-      this.write("_");
-    }
-    this.write(" => ");
-    this.emitThunkBody(after);
-    this.write(")");
-
-    if (needsBlock) {
-      this.write(";\n}");
-    }
+    this.write("return succeed(undefined as void);\n");
   }
 
   private emitPureBody(body: Statement[]): void {
@@ -324,7 +469,7 @@ class Emitter {
     switch (stmt.kind) {
       case "VariableStatement": {
         if (stmt.initializer.kind === "RunExpression") {
-          throw new Error("internal: run should be handled by emitThunkBody");
+          throw new Error("internal: run should be handled by state machine");
         }
         this.write(`${stmt.declarationKind} `);
         this.writeMapped(stmt.name.name, stmt.name.range);
@@ -409,21 +554,87 @@ class Emitter {
   }
 }
 
-function isRunBindingStatement(stmt: Statement): boolean {
+function splitMachineParts(body: Statement[]): MachinePart[] {
+  const parts: MachinePart[] = [];
+  let prelude: Statement[] = [];
+  for (const stmt of body) {
+    const run = runSiteOf(stmt);
+    if (run) {
+      parts.push({ prelude, run });
+      prelude = [];
+    } else {
+      prelude.push(stmt);
+    }
+  }
+  parts.push({ prelude, run: null });
+  return parts;
+}
+
+function runSiteOf(stmt: Statement): RunSite | null {
   if (stmt.kind === "VariableStatement") {
-    return stmt.initializer.kind === "RunExpression";
+    if (stmt.initializer.kind !== "RunExpression") return null;
+    return {
+      kind: "binding",
+      name: stmt.name.name,
+      nameRange: stmt.name.range,
+      source: stmt.initializer.expression,
+      typeAnnotation: stmt.typeAnnotation,
+    };
   }
-  if (stmt.kind === "ExpressionStatement") {
-    return stmt.expression.kind === "RunExpression";
+  if (
+    stmt.kind === "ExpressionStatement" &&
+    stmt.expression.kind === "RunExpression"
+  ) {
+    return { kind: "discard", source: stmt.expression.expression };
   }
-  if (stmt.kind === "ReturnStatement") {
-    return stmt.expression.kind === "RunExpression";
+  if (
+    stmt.kind === "ReturnStatement" &&
+    stmt.expression.kind === "RunExpression"
+  ) {
+    return { kind: "return", source: stmt.expression.expression };
   }
-  return false;
+  return null;
+}
+
+function isRunBindingStatement(stmt: Statement): boolean {
+  return runSiteOf(stmt) !== null;
 }
 
 function fileHasSymbolDecls(ast: SourceFile): boolean {
   return ast.statements.some((s) => s.kind === "SymbolDeclaration");
+}
+
+function fileHasRunInThunk(ast: SourceFile): boolean {
+  return walkHasRun(ast.statements);
+}
+
+function walkHasRun(stmts: Statement[]): boolean {
+  for (const stmt of stmts) {
+    if (isRunBindingStatement(stmt)) return true;
+    if (stmt.kind === "VariableStatement") {
+      if (exprHasRun(stmt.initializer)) return true;
+    } else if (stmt.kind === "ExpressionStatement") {
+      if (exprHasRun(stmt.expression)) return true;
+    } else if (stmt.kind === "ReturnStatement") {
+      if (exprHasRun(stmt.expression)) return true;
+    }
+  }
+  return false;
+}
+
+function exprHasRun(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "RunExpression":
+      return true;
+    case "ThunkExpression":
+      return walkHasRun(expr.body);
+    case "TsExpression":
+      return expr.parts.some(
+        (p) => p.kind === "embedded" && exprHasRun(p.expression),
+      );
+    case "Identifier":
+      return false;
+  }
 }
 
 function fileNeedsTypesImport(ast: SourceFile): {
@@ -434,7 +645,6 @@ function fileNeedsTypesImport(ast: SourceFile): {
   let requires = false;
   for (const stmt of ast.statements) {
     if (stmt.kind === "ProtocolDeclaration") {
-      // Protocol decls may reference types; keep Thunk available if annotated elsewhere.
       continue;
     }
     if (stmt.kind === "VariableStatement" && stmt.typeAnnotation) {

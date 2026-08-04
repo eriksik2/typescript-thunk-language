@@ -6,8 +6,8 @@
 
 | Position | Meaning |
 |---|---|
-| Inside a `thunk` body (statement) | Sequence: wait for the operand thunk, bind the result |
-| `return run expr` | Bind the operand, then succeed with its value |
+| Inside a `thunk` body (statement) | Suspend the state machine: run the operand, resume with its value |
+| `return run expr` | Suspend, then succeed with the resumed value |
 | Top level | Execute a thunk to a value (`execute`) |
 
 ## Syntax
@@ -23,12 +23,14 @@ The operand is a **full expression** (identifier, call, member access, nested `t
 
 ## Semantics
 
-- Inside thunks → lowers to `bind(operand, value => …)`.
-- `return run expr` → `bind(expr, __v => succeed(__v))`.
+- Inside thunks → lowers to an iterative switch-based state machine: `runEffect(operand)` suspends; resume assigns the binding and continues at the next state.
+- `return run expr` → `runEffect(expr)` then `succeed(__resume)`.
 - At top level → lowers to `execute(operand)`.
 - Each `run` removes **one** thunk layer (no auto-flatten).
 
 `run` is still restricted to **statement** positions (`const x = run …`, bare `run …`, `return run …`) — not inside arbitrary expressions like `foo(run bar)`.
+
+`try` / `catch` / `finally` are **out of scope** for now (handler/finalizer state is a separate design).
 
 ## Examples
 
@@ -54,4 +56,4 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and [`examples/requi
 - [Thunk blocks](./thunk-blocks.md)
 - [use](../environment/use.md) — often combined as `run use(Database)`
 - [provide](../environment/provide.md)
-- [Runtime packages](../modules/runtime-packages.md) — `execute` / `bind` live in `/internal`
+- [Runtime packages](../modules/runtime-packages.md) — `machine` / `runEffect` / `execute` live in `/internal`

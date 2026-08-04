@@ -2,7 +2,7 @@
 
 ## What it is
 
-`const` / `let` introduce names. Inside thunks, bindings before a `run` stay in scope for the continuation after `run` (the lowerer preserves lexical scope via `bind`).
+`const` / `let` introduce names. Inside thunks, bindings before a `run` stay in scope after `run` (the lowerer hoists locals across state-machine suspension points).
 
 ## Syntax
 

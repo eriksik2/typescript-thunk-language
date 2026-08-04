@@ -45,15 +45,18 @@ describe("parse", () => {
 });
 
 describe("lower", () => {
-  test("lowers run to bind", () => {
+  test("lowers run to state machine (runEffect + machine)", () => {
     const lowered = lowerThunkSource(`const program = thunk {
   const value = run random
   return value * 2
 }
 `);
-    expect(lowered.generatedText).toContain("bind(");
+    expect(lowered.generatedText).toContain("runEffect(");
+    expect(lowered.generatedText).toContain("machine(");
     expect(lowered.generatedText).toContain("succeed(");
     expect(lowered.generatedText).toContain("defer(");
+    expect(lowered.generatedText).toContain("let __state = 0");
+    expect(lowered.generatedText).not.toContain("bind(");
     expect(lowered.sourceMap.mappings.length).toBeGreaterThan(0);
   });
 
@@ -169,22 +172,27 @@ const x = use
     expect(userStmt.initializer?.expression?.text).toBe('db.getUser("1234")');
 
     const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain('runEffect(db.getUser("1234"))');
+    expect(lowered.generatedText).toContain("user = __resume as ThunkReturnType");
     expect(lowered.generatedText).toContain(
-      'bind(db.getUser("1234"), user => succeed(db.name + " " + user.name))',
+      'succeed(db.name + " " + user.name)',
     );
-    expect(lowered.generatedText).not.toContain("bind(db, user");
+    expect(lowered.generatedText).not.toContain("bind(");
+    expect(lowered.generatedText).not.toContain("runEffect(db)");
     expect(lowered.generatedText).not.toMatch(/\{\s*\.getUser/);
   });
 
-  test("return run lowers to bind then succeed", () => {
+  test("return run lowers to runEffect then succeed(__resume)", () => {
     const lowered = lowerThunkSource(`const program = thunk {
   return run provide(fetchUser, db)
 }
 `);
     expect(lowered.generatedText).toContain(
-      "bind(provide(fetchUser, db), __v => succeed(__v))",
+      "return runEffect(provide(fetchUser, db))",
     );
+    expect(lowered.generatedText).toContain("return succeed(__resume)");
     expect(lowered.generatedText).not.toContain("succeed(execute(");
+    expect(lowered.generatedText).not.toContain("bind(");
   });
 
   test("symbol name mappings land on generated Database identifier", () => {

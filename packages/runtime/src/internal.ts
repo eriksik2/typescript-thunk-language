@@ -6,13 +6,17 @@
 import type {
   EmptyProtocols,
   ExecuteResult,
+  GetRequires,
   IdentityCarrier,
   MergeProtocols,
+  Protocol,
   ProtocolBag,
   ProvideRequires,
+  Requires,
   SymbolOfValue,
   SymbolType,
   Thunk,
+  ThunkReturnType,
   ThunkSymbol,
   WithRequires,
 } from "@thunk/types";
@@ -23,6 +27,8 @@ type ThunkNode<T> =
   | SucceedNode<T>
   | DeferNode<T>
   | BindNode<unknown, T>
+  | RunEffectNode<unknown>
+  | MachineNode<T>
   | UseNode<T>
   | ProvideNode<T>;
 
@@ -40,6 +46,21 @@ interface BindNode<A, B> {
   readonly kind: "bind";
   readonly source: ThunkNode<A>;
   readonly continuation: (value: A) => ThunkNode<B>;
+}
+
+/** Suspend a machine: run `source`, then resume the step with its value. */
+interface RunEffectNode<A> {
+  readonly kind: "runEffect";
+  readonly source: ThunkNode<A>;
+}
+
+/**
+ * Iterative state machine. `step` returns `succeed` (done) or `runEffect`
+ * (suspend). Branches/loops are ordinary `switch` + `continue` inside step.
+ */
+interface MachineNode<T> {
+  readonly kind: "machine";
+  readonly step: (resume: unknown) => ThunkNode<T>;
 }
 
 interface UseNode<T> {
@@ -164,6 +185,7 @@ export function defer<T, P extends ProtocolBag = EmptyProtocols>(
 
 /**
  * Sequence thunks; merge protocol bags (`Requires` via union).
+ * Kept for hand-written runtime use; the lowerer emits `machine` / `runEffect`.
  */
 export function bind<
   A,
@@ -178,6 +200,66 @@ export function bind<
     kind: "bind",
     source: asNode(source),
     continuation: (value) => asNode(continuation(value as A)),
+  });
+}
+
+/**
+ * Suspend a state-machine step: not a `Thunk`, so return-type inference does
+ * not collapse into `Thunk<T, EmptyProtocols>` (empty bags are `{}` and would
+ * otherwise absorb `Requires` via assignability).
+ */
+export type Suspend<A, P extends ProtocolBag = EmptyProtocols> = {
+  readonly __suspendBrand: unique symbol;
+  readonly __resumeType: A;
+  readonly __protocols: P;
+};
+
+type StepResult = Thunk<any, any> | Suspend<any, any>;
+
+type YieldOfStep<R> = R extends Suspend<any, any>
+  ? never
+  : R extends Thunk<infer T, any>
+    ? T
+    : never;
+
+type ProtocolsOfStep<R> =
+  | (R extends Suspend<any, infer P> ? P : never)
+  | (R extends Thunk<any, infer P> ? P : never);
+
+/**
+ * Collapse a union of protocol bags (from machine step return paths).
+ * Emit a structural `{ readonly [Requires]: … }` bag (same shape as
+ * `MergeProtocols`) so hover pretty-printing recognizes `Requires(…)`.
+ */
+type CollapseProtocolUnion<P extends ProtocolBag> = [GetRequires<P>] extends [
+  never,
+]
+  ? EmptyProtocols
+  : { readonly [Requires]: GetRequires<P> };
+
+/**
+ * Suspend the current state machine: execute `source`, then resume `step`
+ * with its yield value.
+ */
+export function runEffect<A, PA extends ProtocolBag>(
+  source: Thunk<A, PA>,
+): Suspend<A, PA> {
+  return {
+    kind: "runEffect",
+    source: asNode(source),
+  } as unknown as Suspend<A, PA>;
+}
+
+/**
+ * Iterative state-machine thunk. `step(resume)` returns `succeed` or
+ * `runEffect`. Protocol bags from all return paths are collapsed.
+ */
+export function machine<R extends StepResult>(
+  step: (resume?: any) => R,
+): Thunk<YieldOfStep<R>, CollapseProtocolUnion<ProtocolsOfStep<R>>> {
+  return asThunk({
+    kind: "machine",
+    step: (resume) => asNode(step(resume) as unknown as Thunk<any, any>),
   });
 }
 
@@ -275,29 +357,58 @@ export function execute<T, P extends ProtocolBag>(
 }
 
 function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
-  switch (thunk.kind) {
-    case "succeed":
-      return thunk.value;
-    case "defer":
-      return executeNode(thunk.factory(), env);
-    case "bind": {
-      const value = executeNode(thunk.source, env);
-      return executeNode(thunk.continuation(value), env);
-    }
-    case "use": {
-      if (!env.has(thunk.sym.key)) {
+  let current: ThunkNode<any> = thunk;
+  for (;;) {
+    switch (current.kind) {
+      case "succeed":
+        return current.value as T;
+      case "defer":
+        current = current.factory();
+        continue;
+      case "bind": {
+        const value = executeNode(current.source, env);
+        current = current.continuation(value);
+        continue;
+      }
+      case "runEffect":
         throw new Error(
-          `No implementation in environment for symbol ${String(thunk.sym.key.description ?? "symbol")}`,
+          "runEffect is only valid inside a machine step (suspend)",
         );
+      case "machine": {
+        let resume: unknown = undefined;
+        for (;;) {
+          let next: ThunkNode<any> = current.step(resume);
+          while (next.kind === "defer") {
+            next = next.factory();
+          }
+          if (next.kind === "succeed") {
+            return next.value as T;
+          }
+          if (next.kind === "runEffect") {
+            resume = executeNode(next.source, env);
+            continue;
+          }
+          // Nested machine / bind / use / provide — run to completion.
+          return executeNode(next, env) as T;
+        }
       }
-      return env.get(thunk.sym.key) as T;
-    }
-    case "provide": {
-      const child: Environment = new Map(env);
-      for (const [k, v] of thunk.layer.entries) {
-        child.set(k, v);
+      case "use": {
+        if (!env.has(current.sym.key)) {
+          throw new Error(
+            `No implementation in environment for symbol ${String(current.sym.key.description ?? "symbol")}`,
+          );
+        }
+        return env.get(current.sym.key) as T;
       }
-      return executeNode(thunk.inner, child);
+      case "provide": {
+        const child: Environment = new Map(env);
+        for (const [k, v] of current.layer.entries) {
+          child.set(k, v);
+        }
+        env = child;
+        current = current.inner;
+        continue;
+      }
     }
   }
 }
@@ -314,4 +425,8 @@ export type {
   IdentityCarrier,
   WithRequires,
   ProvideRequires,
+  ThunkReturnType,
+  Protocol,
 };
+
+export type { Suspend };

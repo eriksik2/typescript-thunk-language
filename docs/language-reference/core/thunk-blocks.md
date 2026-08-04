@@ -27,7 +27,8 @@ Body statements may include ordinary bindings, nested thunks, and [`run`](./run.
 
 ## Semantics
 
-- Lowers to `defer(() => …)` with `succeed` / `bind` for control flow.
+- Pure bodies lower to `defer(() => succeed(…))`.
+- Bodies with `run` lower to `defer(() => { …; return machine(step) })` — an iterative switch-based state machine using `runEffect` / `succeed`.
 - Yield type is the type of the `return` expression (or `void`).
 - Pure thunks have an empty protocol bag → surface type `Thunk<T>`.
 - Nested `thunk { … }` inside ordinary TypeScript text (calls, objects, arrows) is still parsed and lowered — not left as raw `thunk` for TypeScript.

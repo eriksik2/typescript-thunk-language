@@ -53,7 +53,7 @@ This is the same family of architecture used by Vue (Volar), Svelte, Astro, and 
   Extended AST
       │
       ▼
-  Thunk lowering  (thunk / run / pipe → defer / bind / succeed / execute)
+  Thunk lowering  (thunk / run → defer / machine / runEffect / succeed / execute)
       │
       ▼
   Protocol encoding into TypeScript types
@@ -157,7 +157,7 @@ Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires
 
 **Hover pretty-print:** must tolerate TypeScript-expanded `typeof` identities (callables with `=>`) inside Requires bags — `findThunkTypeSpan` is paren/brace aware and skips `=>`. Surface integration tests live under `packages/language-service/surface-*.test.ts` (`bun run proof:requires`).
 
-**Imports:** authors explicitly `import { use, provide, … } from "@thunk/runtime"`. The lowerer injects only `@thunk/runtime/internal` (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) plus auto `import type { Thunk, Requires? } from "@thunk/types"`. `Thunk<T>` needs no author import. Branded **object** values retain identity for `Symbol.of` / `provide(thunk, branded)`.
+**Imports:** authors explicitly `import { use, provide, … } from "@thunk/runtime"`. The lowerer injects only `@thunk/runtime/internal` (`succeed` / `defer` / `runEffect` / `machine` / `execute` / `__makeSymbol`) plus auto `import type { Thunk, Requires?, ThunkReturnType? } from "@thunk/types"`. `Thunk<T>` needs no author import. Branded **object** values retain identity for `Symbol.of` / `provide(thunk, branded)`.
 
 Browseable feature docs: [`docs/language-reference/`](./language-reference/README.md).
 
@@ -171,11 +171,11 @@ Keep the design doc’s separation:
 |---|---|
 | Type / protocol system | Return types, protocol payloads, composition, `execute` validation, `provide` transforms (`@thunk/types`; `Thunk` auto-injected) |
 | Public runtime | Author values: `use` / `provide` / `layerOf` / `mergeLayers` (`@thunk/runtime`) |
-| Internal runtime | Lowerer glue: `succeed` / `defer` / `bind` / `execute` / `__makeSymbol` (`@thunk/runtime/internal`) |
+| Internal runtime | Lowerer glue: `succeed` / `defer` / `runEffect` / `machine` / `execute` / `__makeSymbol` (`bind` kept for hand-written use) (`@thunk/runtime/internal`) |
 
 Function signatures declare protocol transforms explicitly. The compiler does not infer protocol changes by inspecting runtime bodies.
 
-Initial runtime representation: tagged nodes (`succeed` | `defer` | `bind` | `use` | `provide`) with a recursive executor. Iterative stacks can come later.
+Runtime representation: tagged nodes (`succeed` | `defer` | `runEffect` | `machine` | `bind` | `use` | `provide`). Thunks with `run` lower to an **iterative switch-based state machine**; the executor resumes `machine` steps after each `runEffect` without lowering-time recursion.
 
 ---
 
@@ -202,7 +202,7 @@ Not in v0:
 return (run getUser()).name
 ```
 
-Also deferred: `run` in loop conditions, `finally`, unsupported control-flow crossing. Prefer correct, readable `bind`/`defer` output over full JS CFG support.
+Also deferred: `run` in loop conditions; **`try` / `catch` / `finally`** (handler/finalizer state designed separately). Prefer a correct state-machine emit (`machine` / `runEffect`) over supporting every JS construct immediately.
 
 ### 7.3 Why not text-only macros
 
@@ -215,7 +215,7 @@ Pure string rewrites break nested scopes and produce bad maps. Statement-level A
 ```text
 packages/
   language-core/     # parse, AST, lowering, source maps  ← shared kernel
-  runtime/           # succeed, defer, bind, execute, __makeSymbol, Layer, use, provide
+  runtime/           # succeed, defer, runEffect, machine, execute, bind, __makeSymbol, Layer, use, provide
   types/             # Thunk<T, P>, ProtocolBag, Requires, utilities
   language-service/  # Volar language plugin + shared LS helpers (wraps language-core)
   vscode/            # Cursor / VS Code extension (thin host; activates on .thunk)
