@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "thunk": "./src/cli.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

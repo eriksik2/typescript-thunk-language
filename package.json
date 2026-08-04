@@ -4,7 +4,10 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "proof:hover": "bun run scripts/proof-hover.ts",
-    "test:core": "bun test packages/language-core"
+    "test:core": "bun test packages/language-core",
+    "test:ls": "bun test packages/language-service",
+    "build:editor": "bun run --filter @thunk/language-service build && bun run --filter @thunk/vscode build",
+    "thunk": "bun run packages/compiler/src/cli.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

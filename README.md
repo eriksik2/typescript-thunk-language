@@ -6,7 +6,13 @@ Thunk is a TypeScript-adjacent language: familiar imperative style, custom `thun
 
 ## Status
 
-Architecture decision locked; M0 proof-of-concept for parse → lower → TypeScript hover mapping is in progress under `packages/`.
+| Milestone | Status |
+|---|---|
+| **M0** — parse → lower → TS hover mapping (kernel) | Done (`bun run proof:hover`) |
+| **M1** — Volar.js plugin + Cursor/VS Code extension + CLI emit | In progress — see [packages/vscode/README.md](./packages/vscode/README.md) |
+| M2+ — pipes, protocols, `use`/`provide` | Frozen until M1 exit criterion |
+
+Language surface stays at the M0 subset until you can open a `.thunk` file in the editor and feel types/diagnostics without the proof script.
 
 ## Packages
 
@@ -15,15 +21,22 @@ Architecture decision locked; M0 proof-of-concept for parse → lower → TypeSc
 | `@thunk/language-core` | Parse, AST, lowering, source maps |
 | `@thunk/runtime` | `succeed` / `defer` / `bind` / `execute` |
 | `@thunk/types` | `Thunk` type encoding + protocol utilities |
-| `@thunk/language-service` | TypeScript LS host / future Volar plugin |
-| `@thunk/compiler` | CLI |
+| `@thunk/language-service` | TS LS host (M0) + Volar language plugin / server (M1) |
+| `@thunk/compiler` | CLI lower + emit (`bun run thunk -- build …`) |
+| `@thunk/vscode` | Editor extension — [setup & F5](./packages/vscode/README.md) |
 
 ## Develop
 
 ```bash
 bun install
-bun run proof:hover
+bun run proof:hover    # M0 kernel proof
+bun run test:core
+bun run test:ls        # mapping / Volar unit tests
+bun run thunk -- build examples/basic.thunk
+bun run build:editor   # language-server + vscode extension
 ```
+
+Editor F5, reload strategy, and the manual hover/diagnostics checklist live in [packages/vscode/README.md](./packages/vscode/README.md).
 
 ## Legacy
 

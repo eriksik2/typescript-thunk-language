@@ -23,8 +23,8 @@ Full design intent lives with the original language specification. This file is 
 
 ## Deferred
 
-Errors, cancellation, async, concurrency, resources, linearity — after thunk lowering + protocol inference + runtime are stable.
+Pipes, richer control flow, protocol inference, `use`/`provide`, and later concerns (errors, cancellation, async, concurrency, resources, linearity) wait until **M1** (Volar + editor + CLI emit) works on the M0 subset. See `ARCHITECTURE.md` §9.
 
 ## Implementation base
 
-See `ARCHITECTURE.md`: lower-to-TypeScript + virtual documents for editor support.
+See `ARCHITECTURE.md`: lower-to-TypeScript + virtual documents; next packaging target is Volar.js.

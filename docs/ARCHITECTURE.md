@@ -1,8 +1,8 @@
 # Thunk Language — Architecture Decision
 
 **Status:** Accepted  
-**Priority:** Editor support first; everything else second  
-**Date:** 2026-08-04
+**Priority:** Real editor via Volar first (M1); language features second  
+**Date:** 2026-08-04 (milestones reordered same day: Volar before M2+)
 
 ---
 
@@ -83,19 +83,21 @@ TypeScript is the host type system. Thunk owns protocol-bag normalization and th
 
 ### 3.3 Editor stack
 
-**Near-term (prototype):**
+**Done (M0 prototype kernel):**
 
 1. Shared `language-core` (parse → lower → map).
 2. A thin host around `typescript.createLanguageService` that serves **lowered** text for `.thunk` files.
-3. Position mapping for hover / diagnostics.
-4. A VS Code / Cursor extension that starts that language service (or speaks LSP).
+3. Position mapping for hover / diagnostics (`bun run proof:hover`).
 
-**Medium-term:**
+**Next (M1 — required before further language work):**
 
 - Package the same core as a **Volar.js language plugin** so we get embedded-language mapping, multi-editor LSP, and Labs tooling without reinventing project glue.
+- Ship a VS Code / Cursor extension that activates on `.thunk` and uses that plugin.
 - Keep `language-core` free of VS Code APIs so CLI and editor share one implementation.
+- Freeze the language surface at the M0 subset until hover, diagnostics, and emit work in a real editor.
 
 Do **not** start with a TypeScript fork or a bespoke type checker.
+Do **not** grow pipes / protocols / `use`/`provide` until the Volar loop is real.
 
 ---
 
@@ -203,73 +205,130 @@ packages/
   language-core/     # parse, AST, lowering, source maps  ← shared kernel
   runtime/           # succeed, defer, bind, execute, Tag, Layer, use, provide
   types/             # Thunk<T, P>, ProtocolBag, Requires, utilities
-  language-service/  # LS / Volar plugin wrapping language-core + typescript
-  vscode/            # editor extension (Cursor / VS Code)
-  compiler/          # CLI: lower + emit
+  language-service/  # Volar language plugin + shared LS helpers (wraps language-core)
+  vscode/            # Cursor / VS Code extension (thin host; activates on .thunk)
+  compiler/          # CLI: lower + emit (+ watch later)
 
 docs/
   ARCHITECTURE.md    # this file
   LANGUAGE.md        # language design (from the design brief)
 
-examples/            # .thunk samples
+examples/            # .thunk samples (used as the extension smoke fixture)
+scripts/             # proof scripts (proof:hover) and future extension helpers
+```
+
+### 8.1 Volar package sketch (M1 target)
+
+Keep editor glue thin. All parse/lower/map stays in `language-core`.
+
+```text
+packages/language-service/
+  src/
+    index.ts              # public exports
+    create-thunk-project.ts   # existing M0 TS LS host (keep for tests / CLI proofs)
+    volar/
+      language.ts         # Volar LanguagePlugin<.thunk>: create virtual TS + maps
+      service.ts          # optional service plugin (hover presentation later)
+      index.ts
+
+packages/vscode/
+  package.json            # contributes languages: thunk, .thunk; activationEvents
+  src/
+    extension.ts          # activate → @volar/language-server / lab compatible
+  language-configuration.json
+  syntaxes/               # TextMate (minimal: comments + keywords) — optional in M1
+  tsconfig.json
+  README.md               # F5 / vsce launch instructions
+
+packages/compiler/
+  src/
+    index.ts              # lowerThunkSource → write .ts / .js (same maps)
+    cli.ts                # thunk build <file>  (minimal)
+```
+
+**Dependency direction:**
+
+```text
+vscode  →  language-service  →  language-core
+compiler →  language-core
+language-service may use typescript + @volar/* ; language-core must not
 ```
 
 The existing exploratory `src/` Continuation/Thunk library is **not** the language; it may inform the runtime, but the architecture above replaces it as the product surface.
 
 ---
 
-## 9. Prototype milestones (ordered by editor priority)
+## 9. Milestones (Volar environment first)
 
-### M0 — Prove the editor path (this PR)
+Language features after M0 stay frozen until the editor loop is real. One working `.thunk` program in Cursor is worth more than more syntax.
 
-- Parse a tiny subset: `thunk { return <literal> }`, `run <ident>`, top-level `run`.
+### M0 — Prove the editor path (kernel)
+
+- Parse a tiny subset: `thunk { return <expr> }`, `run <ident>`, bindings between runs.
 - Lower to `defer` / `bind` / `succeed` / `execute` calls against `runtime`.
 - Produce source maps (most-specific overlap resolution).
 - Run TypeScript’s type checker on the virtual document.
 - Map a hover query at a `.thunk` offset → type string from TS.
 
-**Status: proven.** `bun run proof:hover` shows hover on `const value = run random` as `(parameter) value: number`.
+**Status: done.** `bun run proof:hover` shows hover on `const value = run random` as `(parameter) value: number`.
 
-### M1 — Pipe + multi-`run` + `defer` placement
+### M1 — Volar + Cursor/VS Code environment ← **next**
+
+Goal: open `examples/basic.thunk`, see types and diagnostics, and compile with the same lowering — even if the language still only supports the M0 subset.
+
+1. **Volar language plugin** in `@thunk/language-service` that exposes virtual TypeScript from `language-core` (same maps as M0).
+2. **`packages/vscode` extension** that activates on `.thunk` and runs the Volar language server / plugin.
+3. **CLI emit** (`@thunk/compiler`): lower a file to disk; share `language-core` with the plugin (no second compiler).
+4. **Setup instructions**: install deps, launch Extension Development Host (F5 / Cursor equivalent), open `examples/`, confirm hover on `value`.
+5. **Reload strategy** (document + implement the minimum that works):
+   - Extension host reload for `packages/vscode` changes.
+   - Rebuild/watch for `language-core` / `language-service` (extension must pick up new plugin code — typically restart LS or reload window).
+   - Investigate Volar Labs / take-over mode for faster iteration; record what works in the vscode package README.
+6. **Smoke checklist**: hover, diagnostics mapped to `.thunk`, one successful `thunk` CLI emit of `examples/basic.thunk`.
+
+**Exit criterion:** a developer can feel the language in the editor without running `proof:hover`.
+
+### M2 — Pipe + multi-`run` + `defer` placement
+
+Only after M1 exit criterion.
 
 - Pipe precedence with `run`.
 - Multiple sequential `run`s and ordinary statements between them.
 - Eager-vs-deferred correctness for code before first `run`.
 
-### M2 — Protocol bag encoding + `Requires`
+### M3 — Protocol bag encoding + `Requires`
 
 - Postfix protocol syntax in types.
 - Infer `Requires` through `bind`.
 - Reject `execute` when requirements remain (`CompileError` encoding).
 
-### M3 — `use` / `provide` / `Layer`
+### M4 — `use` / `provide` / `Layer`
 
 - Runtime environment + typed removal of requirements.
-
-### M4 — Volar / VS Code packaging
-
-- Ship an extension that uses the same `language-core` as the CLI.
 
 ---
 
 ## 10. Open questions (implementation-facing)
 
-Resolved for the prototype unless revisited:
+Resolved unless revisited:
 
 | Topic | Decision |
 |---|---|
 | Protocol defaults (`succeed` / `defer`) | Inherited defaults |
 | Protocol identity | From `succeed<>` |
 | Partial protocol matching | Yes — extra protocols remain on `Th` |
-| Editor base | Virtual TypeScript documents + maps; Volar later |
+| Editor base | Virtual TypeScript documents + maps via **Volar.js** (M1) |
 | File extension | `.thunk` primary |
 | Type host | Stock TypeScript checker on lowered code |
+| Feature order | Editor environment before new syntax |
 
-Still open (do not block M0):
+Still open (do not block M1):
 
 - Exact public names: `Protocol` / `Strip` / `ReturnType` / `Omit`.
 - Pretty-printer for hover (show postfix protocols vs raw encoding).
 - Whether `.th.ts` is worth supporting besides `.thunk`.
+- Best Volar major version / `@volar/language-server` vs hybrid for Cursor.
+- Whether TextMate grammar ships in M1 or can wait until keywords stabilize.
 
 ---
 
@@ -279,6 +338,5 @@ Still open (do not block M0):
 **Editor support comes from checking virtual TypeScript and mapping back.**  
 **One shared `language-core` serves both the language service and the compiler.**  
 **Protocols are encoded as TypeScript types after protocol-aware normalization.**  
-**Do not fork TypeScript and do not rely on LS plugins alone.**
-
-Everything else in the language design (pipes, `Requires`, `use`/`provide`, richer control flow) builds on this base once M0 proves hover works.
+**Do not fork TypeScript and do not rely on LS plugins alone.**  
+**Next work is M1: Volar plugin + extension + CLI emit on the M0 subset — then grow the language.**

@@ -1,0 +1,45 @@
+{
+  "name": "@thunk/vscode",
+  "displayName": "Thunk Language",
+  "description": "Thunk language support for VS Code / Cursor (Volar)",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "thunk",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:thunk"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "thunk",
+        "aliases": ["Thunk", "thunk"],
+        "extensions": [".thunk"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "thunk",
+        "scopeName": "source.thunk",
+        "path": "./syntaxes/thunk.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch"
+  },
+  "dependencies": {
+    "@thunk/language-service": "workspace:*",
+    "@volar/language-server": "2.4.28",
+    "@volar/vscode": "2.4.28",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.82.0",
+    "esbuild": "^0.25.0"
+  }
+}

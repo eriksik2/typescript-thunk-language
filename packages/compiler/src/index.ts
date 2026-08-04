@@ -1,6 +1,5 @@
 /**
- * CLI stub — same lowering as the language service.
- * Emit / watch come after M0.
+ * Compiler API — same lowering as the language service / CLI.
  */
 
 import { lowerThunkSource } from "@thunk/language-core";
