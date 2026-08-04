@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { layerOf, provide, symbolOf, Symbol, use } from "./src/index";
+import { layerOf, provide, symbolOf, symbolIs, Symbol, use } from "./src/index";
 import {
   __makeSymbol,
   bind,
@@ -79,7 +79,7 @@ describe("use / provide / Layer", () => {
   test("__makeSymbol is callable for branding", () => {
     const Age = __makeSymbol<number>("Age");
     const a = Age(30);
-    expect(a).toBe(30);
+    expect(Number(a)).toBe(30);
     expect(typeof Age.key).toBe("symbol");
   });
 
@@ -107,10 +107,11 @@ describe("use / provide / Layer", () => {
     expect(_r).toBe(true);
   });
 
-  test("Symbol.of throws on naked primitives", () => {
+  test("Symbol.of works on boxed primitive brands", () => {
     const Age = __makeSymbol<number>("Age");
     const a = Age(30);
-    expect(() => symbolOf(a as never)).toThrow(/Symbol\.of/);
+    expect(symbolOf(a as never)).toBe(Age);
+    expect(symbolIs(a, Age)).toBe(true);
   });
 });
 

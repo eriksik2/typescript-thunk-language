@@ -223,6 +223,7 @@ class CfgBuilder {
       case "ImportDeclaration":
       case "ProtocolDeclaration":
       case "SymbolDeclaration":
+      case "TypeAliasDeclaration":
         throw new Error(`${stmt.kind} is only valid at top level`);
     }
   }
@@ -385,6 +386,7 @@ class Emitter {
   private needsMakeSymbol = false;
   private needsThunkReturnType = false;
   private needsSymbolType = false;
+  private needsMatchHelpers = false;
   /** Same-file symbol name → resolved associated type text. */
   private readonly symbolAssoc = new Map<string, string>();
   /** Same-file symbol decls by name (for parent brand chaining). */
@@ -403,6 +405,8 @@ class Emitter {
     this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
+    this.needsMatchHelpers = fileHasMatch(ast);
+    if (this.needsMatchHelpers) this.needsSymbolType = true;
     this.collectSymbolDecls(ast);
 
     const imports = ast.statements.filter(
@@ -423,6 +427,13 @@ class Emitter {
     ];
     if (this.needsMakeSymbol) {
       internalNames.push("__makeSymbol");
+    }
+    if (this.needsMatchHelpers) {
+      internalNames.push(
+        "symbolIs as __symbolIs",
+        "__symbolPayload",
+        "__exhaustive",
+      );
     }
     this.write(
       `import { ${internalNames.join(", ")} } from "${this.internalImportPath}";\n`,
@@ -485,6 +496,11 @@ class Emitter {
       case "SymbolDeclaration":
         this.emitSymbolDeclaration(stmt);
         return;
+      case "TypeAliasDeclaration":
+        this.writeMapped(stmt.text, stmt.range);
+        if (!stmt.text.endsWith(";")) this.write(";");
+        this.write("\n");
+        return;
       case "ReturnStatement":
       case "BlockStatement":
       case "IfStatement":
@@ -539,12 +555,71 @@ class Emitter {
     const brand = `__brand_${name}`;
     const parentName = decl.extendsName?.name;
     const assocRange = decl.associatedType?.range ?? decl.name.range;
+    const typeParams = decl.typeParams.trim();
+    const typeParamList = typeParams ? `<${typeParams}>` : "";
+    // First type param name for generic brand callable, or full assoc for monomorphic.
+    const firstParam = typeParams
+      ? typeParams.split(",")[0]!.trim().split(/\s+extends\s+/)[0]!.trim()
+      : "";
 
     this.write(`declare const ${brand}: unique symbol;\n`);
     this.write("const ");
     this.writeMapped(name, decl.name.range);
 
     // Runtime identity
+    if (typeParams) {
+      this.write(" = __makeSymbol<any>(");
+      this.write(`${JSON.stringify(name)}`);
+      if (decl.isAbstract || parentName) {
+        this.write(", {");
+        if (decl.isAbstract) this.write(" abstract: true,");
+        if (parentName) {
+          this.write(" parent: ");
+          this.writeMapped(parentName, decl.extendsName!.range);
+          this.write(",");
+        }
+        this.write(" }");
+      }
+      this.write(") as unknown as ");
+      if (decl.isAbstract) {
+        this.write("{ readonly key: symbol; readonly __assoc: any");
+        this.write('; readonly __thunkSymbol?: "ThunkSymbol"; readonly __abstract: true');
+        if (parentName) {
+          this.write("; readonly __parent?: typeof ");
+          this.writeMapped(parentName, decl.extendsName!.range);
+        }
+        this.write(" }");
+      } else {
+        this.write(`(<${typeParams}>(value: ${firstParam}) => ${name}${typeParamList})`);
+        this.write(" & { readonly key: symbol; readonly __assoc: any }");
+        if (parentName) {
+          this.write(" & { readonly __parent?: typeof ");
+          this.writeMapped(parentName, decl.extendsName!.range);
+          this.write(" }");
+        }
+      }
+      this.write(";\n");
+
+      this.write("type ");
+      this.writeMapped(name, decl.name.range);
+      this.write(`${typeParamList} = `);
+      this.writeMapped(assoc, assocRange);
+      this.write(" & ");
+      this.write(
+        `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
+      );
+      this.writeMapped(assoc, assocRange);
+      this.write(" }");
+      if (!decl.isAbstract) {
+        this.write(" & { readonly __symbolIdentity?: typeof ");
+        this.writeMapped(name, decl.name.range);
+        this.write(" }");
+      }
+      this.write(";\n");
+      this.write("\n");
+      return;
+    }
+
     this.write(" = __makeSymbol<");
     this.writeMapped(assoc, assocRange);
     this.write(`>(${JSON.stringify(name)}`);
@@ -936,6 +1011,7 @@ class Emitter {
       case "ImportDeclaration":
       case "ProtocolDeclaration":
       case "SymbolDeclaration":
+      case "TypeAliasDeclaration":
         throw new Error(`${stmt.kind} is only valid at top level`);
     }
   }
@@ -960,6 +1036,9 @@ class Emitter {
       case "PipeExpression":
         this.emitPipeExpression(expr);
         return;
+      case "MatchExpression":
+        this.emitMatchExpression(expr);
+        return;
       case "RunExpression":
         // After ANF, nested run should not appear in value position inside
         // thunks; top-level / fallback peels via execute.
@@ -971,7 +1050,95 @@ class Emitter {
   }
 
   /**
-   * `left | right` → `right(left)` or `callee(left, args…)` when right is a call.
+   * `match (scrutinee) { arms }` → IIFE of exact `Symbol.is` arms + `__exhaustive`.
+   */
+  private emitMatchExpression(expr: {
+    readonly scrutinee: Expression;
+    readonly arms: readonly {
+      readonly pattern:
+        | {
+            readonly kind: "MatchSymbolPattern";
+            readonly symbol: { readonly name: string; readonly range: Range };
+            readonly binding?: {
+              readonly name: string;
+              readonly range: Range;
+            };
+          }
+        | {
+            readonly kind: "MatchObjectPattern";
+            readonly symbol: { readonly name: string; readonly range: Range };
+            readonly fields: readonly {
+              readonly field: { readonly name: string; readonly range: Range };
+              readonly binding: {
+                readonly name: string;
+                readonly range: Range;
+              };
+            }[];
+          };
+      readonly expression: Expression;
+    }[];
+  }): void {
+    if (exprHasRunInArms(expr)) {
+      throw new Error(
+        "match v1 does not allow `run` inside arms (bind with statement `run` first)",
+      );
+    }
+    this.needsMatchHelpers = true;
+    this.needsSymbolType = true;
+    this.write("((__match) => {\n");
+    let first = true;
+    for (const arm of expr.arms) {
+      const sym = arm.pattern.symbol;
+      if (first) {
+        this.write("if (__symbolIs(__match, ");
+        first = false;
+      } else {
+        this.write("else if (__symbolIs(__match, ");
+      }
+      this.writeMapped(sym.name, sym.range);
+      this.write(")) {\n");
+      // Narrow leaf via IdentityCarrier so Ok<number>|Err<E> → Ok<number>.
+      this.write("type __leaf = Extract<typeof __match, { readonly __symbolIdentity?: typeof ");
+      this.writeMapped(sym.name, sym.range);
+      this.write(" }>;\n");
+      if (arm.pattern.kind === "MatchSymbolPattern") {
+        if (arm.pattern.binding) {
+          this.write("const ");
+          this.writeMapped(
+            arm.pattern.binding.name,
+            arm.pattern.binding.range,
+          );
+          this.write(
+            " = __symbolPayload(__match as __leaf) as SymbolType<__leaf>;\n",
+          );
+        }
+      } else {
+        this.write(
+          "const __payload = (__match as __leaf) as SymbolType<__leaf>;\n",
+        );
+        for (const field of arm.pattern.fields) {
+          this.write("const ");
+          this.writeMapped(field.binding.name, field.binding.range);
+          this.write(" = __payload.");
+          this.writeMapped(field.field.name, field.field.range);
+          this.write(";\n");
+        }
+      }
+      this.write("return ");
+      this.emitValueExpression(arm.expression);
+      this.write(";\n");
+      this.write("} ");
+    }
+    this.write("else {\n");
+    this.write("return __exhaustive(__match);\n");
+    this.write("}\n");
+    this.write("})(");
+    this.emitValueExpression(expr.scrutinee);
+    this.write(")");
+  }
+
+  /**
+   * `left | right` → `right(left)` or `callee(left, …args)` when right is a call.
    */
   private emitPipeExpression(expr: {
     readonly left: Expression;
@@ -1129,6 +1296,67 @@ function fileHasSymbolDecls(ast: SourceFile): boolean {
   return ast.statements.some((s) => s.kind === "SymbolDeclaration");
 }
 
+function fileHasMatch(ast: SourceFile): boolean {
+  return walkHasMatch(ast.statements);
+}
+
+function walkHasMatch(stmts: readonly Statement[]): boolean {
+  for (const stmt of stmts) {
+    switch (stmt.kind) {
+      case "VariableStatement":
+        if (exprHasMatch(stmt.initializer)) return true;
+        break;
+      case "ExpressionStatement":
+      case "ReturnStatement":
+        if (exprHasMatch(stmt.expression)) return true;
+        break;
+      case "BlockStatement":
+        if (walkHasMatch(stmt.statements)) return true;
+        break;
+      case "IfStatement":
+        if (exprHasMatch(stmt.condition)) return true;
+        if (walkHasMatch([stmt.consequent])) return true;
+        if (stmt.alternate && walkHasMatch([stmt.alternate])) return true;
+        break;
+      case "WhileStatement":
+        if (exprHasMatch(stmt.condition)) return true;
+        if (walkHasMatch([stmt.body])) return true;
+        break;
+      case "ForStatement":
+        if (stmt.condition && exprHasMatch(stmt.condition)) return true;
+        if (stmt.update && exprHasMatch(stmt.update)) return true;
+        if (walkHasMatch([stmt.body])) return true;
+        break;
+    }
+  }
+  return false;
+}
+
+function exprHasMatch(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "MatchExpression":
+      return true;
+    case "PipeExpression":
+      return exprHasMatch(expr.left) || exprHasMatch(expr.right);
+    case "RunExpression":
+      return exprHasMatch(expr.expression);
+    case "ThunkExpression":
+      return walkHasMatch(expr.body);
+    case "TsExpression":
+      return expr.parts.some(
+        (p) => p.kind === "embedded" && exprHasMatch(p.expression),
+      );
+    case "Identifier":
+      return false;
+  }
+}
+
+function exprHasRunInArms(expr: {
+  readonly arms: readonly { readonly expression: Expression }[];
+}): boolean {
+  return expr.arms.some((a) => exprHasRun(a.expression));
+}
+
 function emptyObjectType(text: string): boolean {
   return text.replace(/\s/g, "") === "{}";
 }
@@ -1147,6 +1375,11 @@ function exprHasRun(expr: Expression): boolean {
       return true;
     case "PipeExpression":
       return exprHasRun(expr.left) || exprHasRun(expr.right);
+    case "MatchExpression":
+      return (
+        exprHasRun(expr.scrutinee) ||
+        expr.arms.some((a) => exprHasRun(a.expression))
+      );
     case "ThunkExpression":
       return bodyContainsRun(expr.body);
     case "TsExpression":
@@ -1169,6 +1402,8 @@ function expressionText(expr: Expression): string {
       return `${expressionText(expr.left)} | ${expressionText(expr.right)}`;
     case "RunExpression":
       return `run ${expressionText(expr.expression)}`;
+    case "MatchExpression":
+      return `match (…) { … }`;
     case "ThunkExpression":
       return "thunk { … }";
   }

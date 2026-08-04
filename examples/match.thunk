@@ -1,0 +1,61 @@
+import {
+  Ok,
+  Err,
+  Error,
+  type Result,
+} from "@thunk/runtime"
+
+// --- Option (example-local generic symbols) ---
+symbol Some<T> = T
+symbol None = {}
+type Option<T> = Some<T> | None
+
+// --- Symbol union (object payloads + nested field bind) ---
+symbol Circle {
+  radius: number
+}
+symbol Rect {
+  width: number
+  height: number
+}
+type Shape = Circle | Rect
+
+// --- Closed error union (leaves under Failure / Error) ---
+symbol NotFound extends Error {
+  path: string
+}
+symbol Conflict extends Error {
+  resource: string
+}
+type AppErr = NotFound | Conflict
+
+const describeShape = (s: Shape): string =>
+  match (s) {
+    Circle { radius: infer r } => "circle r=" + r,
+    Rect { width: infer w, height: infer h } => "rect " + w + "x" + h,
+  }
+
+const unwrapOption = (o: Option<number>): number =>
+  match (o) {
+    Some: infer n => n,
+    None => 0,
+  }
+
+const showResult = (r: Result<number, string>): string =>
+  match (r) {
+    Ok: infer n => "ok " + n,
+    Err: infer e => "err " + e,
+  }
+
+const showAppErr = (e: AppErr): string =>
+  match (e) {
+    NotFound { path: infer p, message: infer m } => "missing " + p + ": " + m,
+    Conflict { resource: infer r, message: infer m } => "conflict " + r + ": " + m,
+  }
+
+const shapes = describeShape(Circle({ radius: 3 }))
+const opt = unwrapOption(Some(42))
+const res = showResult(Ok(7))
+const err = showAppErr(
+  NotFound({ message: "gone", path: "/x" }),
+)

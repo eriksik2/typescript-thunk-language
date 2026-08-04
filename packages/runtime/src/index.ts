@@ -38,6 +38,9 @@ export type {
   FailurePayload,
 } from "./failure";
 
+export { Ok, Err } from "./result";
+export type { Ok, Err, Result } from "./result";
+
 export type {
   Thunk,
   EmptyProtocols,

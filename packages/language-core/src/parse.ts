@@ -11,6 +11,12 @@ import type {
   Identifier,
   ImportDeclaration,
   ImportSpecifier,
+  MatchArm,
+  MatchExpression,
+  MatchFieldPattern,
+  MatchObjectPattern,
+  MatchPattern,
+  MatchSymbolPattern,
   PipeExpression,
   ProtocolClause,
   ProtocolDeclaration,
@@ -21,6 +27,7 @@ import type {
   ThunkExpression,
   TsExpression,
   TsExpressionPart,
+  TypeAliasDeclaration,
   TypeAnnotation,
   VariableStatement,
 } from "./ast";
@@ -71,6 +78,10 @@ class Parser {
 
     if (this.peekKeyword("abstract") || this.peekKeyword("symbol")) {
       return this.parseSymbolDeclaration(start);
+    }
+
+    if (this.peekKeyword("type")) {
+      return this.parseTypeAliasDeclaration(start);
     }
 
     if (this.peek() === "{") {
@@ -129,6 +140,32 @@ class Parser {
       kind: "ExpressionStatement",
       range: this.range(start, this.pos),
       expression,
+    };
+  }
+
+  /**
+   * Opaque `type Name = …` / `type Name<…> = …` (export type deferred).
+   * Consumes through the alias RHS without treating `|` as pipe.
+   */
+  private parseTypeAliasDeclaration(start: number): TypeAliasDeclaration {
+    this.matchKeyword("type");
+    this.skipTrivia();
+    this.parseIdentifier();
+    this.skipTrivia();
+    if (this.peek() === "<") {
+      this.consumeBalanced("<", ">");
+      this.skipTrivia();
+    }
+    this.expect("=");
+    this.skipTrivia();
+    // Associated-type style consume — stop at `;` / newline at depth 0,
+    // but allow `|` inside the type (do not use expression parser).
+    this.consumeAssociatedTypeAlias();
+    this.expectSemiOrNewline();
+    return {
+      kind: "TypeAliasDeclaration",
+      range: this.range(start, this.pos),
+      text: this.text.slice(start, this.pos).replace(/\s+$/, ""),
     };
   }
 
@@ -532,7 +569,7 @@ class Parser {
   }
 
   /**
-   * `symbol Name = Type;` / `symbol Name { ... }` /
+   * `symbol Name = Type;` / `symbol Name<A> = Type;` / `symbol Name { ... }` /
    * `abstract symbol …` / `symbol Name extends Parent [{ … }]`
    * Not parsed in expression position (anonymous symbols deferred).
    */
@@ -545,6 +582,15 @@ class Parser {
     this.skipTrivia();
     const name = this.parseIdentifier();
     this.skipTrivia();
+
+    let typeParams = "";
+    if (this.peek() === "<") {
+      typeParams = this.consumeBalanced("<", ">")
+        .replace(/^</, "")
+        .replace(/>$/, "")
+        .trim();
+      this.skipTrivia();
+    }
 
     let extendsName: Identifier | undefined;
     if (this.matchKeyword("extends")) {
@@ -562,6 +608,7 @@ class Parser {
         kind: "SymbolDeclaration",
         name,
         isAbstract,
+        typeParams,
         extendsName,
         associatedType:
           extendsName && emptyBody
@@ -582,6 +629,7 @@ class Parser {
         kind: "SymbolDeclaration",
         name,
         isAbstract,
+        typeParams,
         extendsName,
         range: this.range(start, this.pos),
       };
@@ -596,6 +644,7 @@ class Parser {
       kind: "SymbolDeclaration",
       name,
       isAbstract,
+      typeParams,
       associatedType: {
         form: "alias",
         text: aliasText,
@@ -737,7 +786,7 @@ class Parser {
    *   expr     = runExpr
    *   runExpr  = 'run' runExpr | pipeExpr
    *   pipeExpr = primary ('|' primary)*
-   *   primary  = thunk | '(' expr ')' | tsAtom
+   *   primary  = thunk | match | '(' expr ')' | tsAtom
    */
   private parseExpression(): Expression {
     return this.parseRunExpression();
@@ -762,7 +811,9 @@ class Parser {
     const start = this.pos;
     let left = this.parsePrimaryExpression();
     for (;;) {
-      this.skipTrivia();
+      // Only horizontal space — newlines end the surrounding statement /
+      // TsExpression (important after `match { … }`).
+      this.skipSpaces();
       if (!this.tryMatchPipeOperator()) break;
       this.skipTrivia();
       const right = this.parsePrimaryExpression();
@@ -807,9 +858,139 @@ class Parser {
       return expr;
     }
 
+    if (this.matchKeyword("match")) {
+      return this.parseMatchExpression(start);
+    }
+
     // Parentheses stay inside TsExpression so suffixes like `(run x).name`
     // and pipe left `(run x) | f` keep surrounding text / embeds intact.
     return this.parseTsExpression();
+  }
+
+  /**
+   * `match (scrutinee) { Arm, … }`
+   * Arms: `Symbol => e` | `Symbol: infer x => e` | `Symbol { f: infer x } => e`
+   */
+  private parseMatchExpression(start: number): MatchExpression {
+    this.skipTrivia();
+    this.expect("(");
+    this.skipTrivia();
+    const scrutinee = this.parseExpression();
+    this.skipTrivia();
+    this.expect(")");
+    this.skipTrivia();
+    this.expect("{");
+    this.skipTrivia();
+    const arms: MatchArm[] = [];
+    while (!this.eof() && this.peek() !== "}") {
+      arms.push(this.parseMatchArm());
+      this.skipTrivia();
+      if (this.peek() === ",") {
+        this.pos++;
+        this.skipTrivia();
+      }
+    }
+    this.expect("}");
+    if (arms.length === 0) {
+      throw new ParseError("match requires at least one arm", start);
+    }
+    return {
+      kind: "MatchExpression",
+      range: this.range(start, this.pos),
+      scrutinee,
+      arms,
+    };
+  }
+
+  private parseMatchArm(): MatchArm {
+    const start = this.pos;
+    const pattern = this.parseMatchPattern();
+    this.skipTrivia();
+    if (this.text.slice(this.pos, this.pos + 2) !== "=>") {
+      throw new ParseError("expected => after match pattern", this.pos);
+    }
+    this.pos += 2;
+    this.skipTrivia();
+    const expression = this.parseMatchArmExpression();
+    return {
+      kind: "MatchArm",
+      range: this.range(start, this.pos),
+      pattern,
+      expression,
+    };
+  }
+
+  private parseMatchPattern(): MatchPattern {
+    const start = this.pos;
+    const symbol = this.parseIdentifier();
+    this.skipTrivia();
+
+    if (this.peek() === "{") {
+      this.pos++;
+      this.skipTrivia();
+      const fields: MatchFieldPattern[] = [];
+      while (!this.eof() && this.peek() !== "}") {
+        const fieldStart = this.pos;
+        const field = this.parseIdentifier();
+        this.skipTrivia();
+        this.expect(":");
+        this.skipTrivia();
+        if (!this.matchKeyword("infer")) {
+          throw new ParseError(
+            "match v1 object fields require `infer name`",
+            this.pos,
+          );
+        }
+        this.skipTrivia();
+        const binding = this.parseIdentifier();
+        fields.push({
+          range: this.range(fieldStart, this.pos),
+          field,
+          binding,
+        });
+        this.skipTrivia();
+        if (this.peek() === ",") {
+          this.pos++;
+          this.skipTrivia();
+        }
+      }
+      this.expect("}");
+      const pat: MatchObjectPattern = {
+        kind: "MatchObjectPattern",
+        range: this.range(start, this.pos),
+        symbol,
+        fields,
+      };
+      return pat;
+    }
+
+    let binding: Identifier | undefined;
+    if (this.peek() === ":") {
+      this.pos++;
+      this.skipTrivia();
+      if (!this.matchKeyword("infer")) {
+        throw new ParseError(
+          "match v1 payload binding requires `: infer name`",
+          this.pos,
+        );
+      }
+      this.skipTrivia();
+      binding = this.parseIdentifier();
+    }
+
+    const pat: MatchSymbolPattern = {
+      kind: "MatchSymbolPattern",
+      range: this.range(start, this.pos),
+      symbol,
+      binding,
+    };
+    return pat;
+  }
+
+  /** Arm body expression — stop at top-level `,` or `}`. */
+  private parseMatchArmExpression(): Expression {
+    // Reuse expression parser; TsExpression already stops at `,` / `}`.
+    return this.parseExpression();
   }
 
   private parseTsExpression(): TsExpression {
@@ -835,7 +1016,13 @@ class Parser {
     while (!this.eof()) {
       const c = this.peek();
       if (depthParen === 0 && depthBrace === 0 && depthBracket === 0) {
-        if (c === ";" || c === "\n" || c === "}" || c === ",") break;
+        if (c === ";" || c === "}" || c === ",") break;
+        // Newline ends the expression unless the preceding token expects a
+        // continuation (arrow `=>`, operators, etc.) so
+        // `= (s): t =>\n  match (…) {…}` stays one expression.
+        if (c === "\n" && !this.tsExprContinuesAfterNewline(parts, chunkStart)) {
+          break;
+        }
         // Pipe operator — leave for parsePipeExpression (not `||`)
         if (c === "|" && this.text[this.pos + 1] !== "|") break;
       }
@@ -919,6 +1106,27 @@ class Parser {
    * If at `thunk { … }` or a nested `run` (not `x.run`), flush pending text,
    * parse it, and push an embedded part. Returns true when an embed was consumed.
    */
+  /**
+   * True when a newline should not end this TsExpression because the text so
+   * far ends with a token that expects a RHS (`=>`, binary ops, etc.).
+   */
+  private tsExprContinuesAfterNewline(
+    parts: readonly TsExpressionPart[],
+    chunkStart: number,
+  ): boolean {
+    let tail = this.text.slice(chunkStart, this.pos);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i]!;
+      if (p.kind === "text") tail = p.text + tail;
+      else break;
+    }
+    const t = tail.replace(/\s+$/u, "");
+    if (!t) return false;
+    if (t.endsWith("=>")) return true;
+    const last = t[t.length - 1]!;
+    return "=(,+-*/%<>!?&|:.[".includes(last);
+  }
+
   private tryEmbedThunkOrRun(
     parts: TsExpressionPart[],
     onBeforeEmbed: () => void,
@@ -949,6 +1157,23 @@ class Parser {
         expression: this.parseRunExpression(),
       });
       return true;
+    }
+
+    // Nested `match (…)` 
+    if (this.peekKeyword("match") && !this.precededByDot()) {
+      const save = this.pos;
+      this.matchKeyword("match");
+      this.skipTrivia();
+      if (this.peek() === "(") {
+        this.pos = save;
+        onBeforeEmbed();
+        parts.push({
+          kind: "embedded",
+          expression: this.parseExpression(),
+        });
+        return true;
+      }
+      this.pos = save;
     }
 
     return false;

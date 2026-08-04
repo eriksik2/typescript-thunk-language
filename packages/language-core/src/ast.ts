@@ -10,13 +10,15 @@
  *   return expr
  *   protocol Name<...> { bind<A,B>: ...; ... }
  *   symbol Name = Type;
+ *   symbol Name<A> = Type;
  *   symbol Name { ... }
  *   abstract symbol Name { ... }
  *   symbol Name extends Parent
  *   symbol Name extends Parent { ... }
  *   expr | fn / expr | fn(a)   (first-arg pipe)
+ *   match (expr) { Arm, … }
  *
- * Expressions: hybrid TS text + structural thunk/run/pipe; expression-position
+ * Expressions: hybrid TS text + structural thunk/run/pipe/match; expression-position
  * `run` is normalized via ANF before machine lowering.
  */
 
@@ -36,12 +38,24 @@ export type Statement =
   | ExpressionStatement
   | ProtocolDeclaration
   | SymbolDeclaration
+  | TypeAliasDeclaration
   | BlockStatement
   | IfStatement
   | WhileStatement
   | ForStatement
   | BreakStatement
   | ContinueStatement;
+
+/**
+ * Opaque TypeScript `type Name = …` / `type Name<…> = …` passthrough.
+ * Needed so `|` in type aliases is not parsed as pipe.
+ */
+export interface TypeAliasDeclaration {
+  readonly kind: "TypeAliasDeclaration";
+  readonly range: Range;
+  /** Full original statement text (for faithful emit). */
+  readonly text: string;
+}
 
 /** `{ … }` */
 export interface BlockStatement {
@@ -122,8 +136,8 @@ export interface SymbolAssociatedType {
 }
 
 /**
- * `symbol Name = Type;` / `symbol Name { ... }` / `abstract symbol …` /
- * `symbol Name extends Parent [{ … }]`.
+ * `symbol Name = Type;` / `symbol Name<A> = Type;` / `symbol Name { ... }` /
+ * `abstract symbol …` / `symbol Name extends Parent [{ … }]`.
  * Introduces value `Name` and branded type `Name`.
  * Abstract symbols are not callable brand constructors.
  */
@@ -132,6 +146,11 @@ export interface SymbolDeclaration {
   readonly name: Identifier;
   /** When true, identity is not a brand constructor. */
   readonly isAbstract: boolean;
+  /**
+   * Raw generic params text without outer `<>`, e.g. `A` or `A, E`,
+   * or empty when non-generic.
+   */
+  readonly typeParams: string;
   /** Parent symbol name when declared with `extends`. */
   readonly extendsName?: Identifier;
   /**
@@ -198,7 +217,53 @@ export type Expression =
   | ThunkExpression
   | RunExpression
   | PipeExpression
+  | MatchExpression
   | TsExpression;
+
+/**
+ * `match (scrutinee) { Arm, … }` — exact leaf match (v1).
+ * Arms use `Symbol.is`; exhaustiveness is checked via `never` on the remainder.
+ */
+export interface MatchExpression {
+  readonly kind: "MatchExpression";
+  readonly range: Range;
+  readonly scrutinee: Expression;
+  readonly arms: readonly MatchArm[];
+}
+
+export interface MatchArm {
+  readonly kind: "MatchArm";
+  readonly range: Range;
+  readonly pattern: MatchPattern;
+  readonly expression: Expression;
+}
+
+export type MatchPattern =
+  | MatchSymbolPattern
+  | MatchObjectPattern;
+
+/** `Ok` or `Ok: infer a` */
+export interface MatchSymbolPattern {
+  readonly kind: "MatchSymbolPattern";
+  readonly range: Range;
+  readonly symbol: Identifier;
+  /** Whole-payload binding from `: infer name`. */
+  readonly binding?: Identifier;
+}
+
+/** `Person { name: infer n, age: infer age }` */
+export interface MatchObjectPattern {
+  readonly kind: "MatchObjectPattern";
+  readonly range: Range;
+  readonly symbol: Identifier;
+  readonly fields: readonly MatchFieldPattern[];
+}
+
+export interface MatchFieldPattern {
+  readonly range: Range;
+  readonly field: Identifier;
+  readonly binding: Identifier;
+}
 
 export interface Identifier {
   readonly kind: "Identifier";
