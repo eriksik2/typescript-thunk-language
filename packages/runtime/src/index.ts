@@ -10,12 +10,17 @@ export {
   provide,
   layerOf,
   mergeLayers,
-  symbolOf,
-  symbolIs,
-  symbolExtends,
-  Symbol,
   type Layer,
 } from "./internal";
+
+export {
+  symbolOf,
+  symbolIs,
+  symbolHas,
+  symbolTo,
+  symbolExtends,
+  Symbol,
+} from "./symbol-api";
 
 export { wrap } from "./wrap";
 
@@ -42,7 +47,10 @@ export type {
   ThunkSymbol,
   SymbolType,
   SymbolOfValue,
+  SymbolExtends,
+  SymbolToTarget,
   IdentityCarrier,
+  ParentCarrier,
   WithRequires,
   WithAsync,
   ProvideRequires,

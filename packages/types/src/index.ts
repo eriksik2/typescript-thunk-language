@@ -57,6 +57,14 @@ export type ThunkSymbol<T> = {
 };
 
 /**
+ * Phantom parent link on a symbol identity (`typeof Child`).
+ * Enables type-level `SymbolExtends` / `Symbol.to` checks.
+ */
+export type ParentCarrier<P = unknown> = {
+  readonly __parent?: P;
+};
+
+/**
  * Extract associated type `T` from a symbol identity (`typeof Name`)
  * or a branded inhabitant that carries `__assoc`.
  */
@@ -86,6 +94,33 @@ export type SymbolOfValue<V> = V extends IdentityCarrier<infer S>
     ? never
     : S
   : never;
+
+/**
+ * True when `Child` identity is `Parent` or extends it (declaration hierarchy).
+ * Walks `__parent` phantoms on identities — not value subtyping.
+ */
+export type SymbolExtends<Child, Parent> = [Child] extends [Parent]
+  ? [Parent] extends [Child]
+    ? true
+    : SymbolExtendsParentWalk<Child, Parent>
+  : SymbolExtendsParentWalk<Child, Parent>;
+
+type SymbolExtendsParentWalk<Child, Parent> = Child extends {
+  readonly __parent?: infer P;
+}
+  ? [P] extends [undefined]
+    ? false
+    : [P] extends [Parent]
+      ? true
+      : SymbolExtends<P, Parent>
+  : false;
+
+/**
+ * `Symbol.to` target: `Parent` only when the value's leaf identity extends it.
+ * Otherwise `never` (type error at the call site).
+ */
+export type SymbolToTarget<V, Parent> =
+  SymbolExtends<SymbolOfValue<V>, Parent> extends true ? Parent : never;
 
 /**
  * Nominal brand over associated type `T`, keyed by a unique brand key.

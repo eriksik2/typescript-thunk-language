@@ -13,12 +13,14 @@ Failure          (abstract)
 
 | Symbol | Role |
 |---|---|
-| `Failure` | Abstract root — type + `Symbol.is` target; cannot brand |
+| `Failure` | Abstract root — `Symbol.has` / `Symbol.to` target; cannot brand |
 | `Defect` | Faulty / corrupted program (e.g. unexpected naked throws) |
-| `UnhandledError` | External failure not yet handled (e.g. future `wrap` / Promise rejection) |
+| `UnhandledError` | External failure not yet handled (e.g. `wrap` / Promise rejection) |
 | `Error` | Ordinary tagged application error |
 
 Associated payload: `{ message: string }`.
+
+**No value LSP:** a `Defect` is not assignable to `Failure`. Use `Symbol.has` / `Symbol.to`.
 
 ## Surface
 
@@ -31,15 +33,14 @@ import {
   Symbol,
 } from "@thunk/runtime"
 
-const d: Failure = Defect({ message: "invariant" })
-Symbol.is(d, Failure)   // true
-Symbol.is(d, Defect)    // true
-Symbol.of(d)            // Defect
+const d = Defect({ message: "invariant" })
+Symbol.is(d, Defect)     // true
+Symbol.is(d, Failure)    // false
+Symbol.has(d, Failure)   // true
+Symbol.to(d, Failure)    // Failure-shaped view; of(d) still Defect
 ```
 
 Importing `Error` shadows the platform `Error` constructor in that scope — use `globalThis.Error` when you need it.
-
-Promise rejection throws a branded [`UnhandledError`](../symbols/failure-hierarchy.md) (`Symbol.is(err, UnhandledError)`). Full typed catch channels are deferred.
 
 Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred. `wrap` rejection → `UnhandledError` is the bare-minimum bridge.
 
@@ -50,6 +51,6 @@ Typed failure channels, `try` / `catch`, and discharging errors on thunks remain
 ## Related
 
 - [symbol declarations](./symbol-declarations.md)
-- [Symbol.is](./symbol-is.md)
+- [Symbol.is / has / to](./symbol-is.md)
 - [Branding](./branding.md)
 - [Runtime packages](../modules/runtime-packages.md)

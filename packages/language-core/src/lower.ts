@@ -561,7 +561,12 @@ class Emitter {
     if (decl.isAbstract) {
       this.write("{ readonly key: symbol; readonly __assoc: ");
       this.writeMapped(assoc, assocRange);
-      this.write("; readonly __abstract: true }");
+      this.write('; readonly __thunkSymbol?: "ThunkSymbol"; readonly __abstract: true');
+      if (parentName) {
+        this.write("; readonly __parent?: typeof ");
+        this.writeMapped(parentName, decl.extendsName!.range);
+      }
+      this.write(" }");
     } else {
       this.write("((value: ");
       this.writeMapped(assoc, assocRange);
@@ -570,24 +575,21 @@ class Emitter {
       this.write(") & { readonly key: symbol; readonly __assoc: ");
       this.writeMapped(assoc, assocRange);
       this.write(" }");
+      if (parentName) {
+        this.write(" & { readonly __parent?: typeof ");
+        this.writeMapped(parentName, decl.extendsName!.range);
+        this.write(" }");
+      }
     }
     this.write(";\n");
 
-    // Branded type — intersect parent for LSP when extending
+    // Branded type — own brand only (no parent intersection / no value LSP).
+    // Associated type still merges parent fields for the payload shape.
     this.write("type ");
     this.writeMapped(name, decl.name.range);
     this.write(" = ");
-    if (parentName) {
-      this.writeMapped(parentName, decl.extendsName!.range);
-      this.write(" & ");
-      if (decl.associatedType && !emptyObjectType(decl.associatedType.text)) {
-        this.writeMapped(decl.associatedType.text, decl.associatedType.range);
-        this.write(" & ");
-      }
-    } else {
-      this.writeMapped(assoc, assocRange);
-      this.write(" & ");
-    }
+    this.writeMapped(assoc, assocRange);
+    this.write(" & ");
     this.write(
       `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
     );
