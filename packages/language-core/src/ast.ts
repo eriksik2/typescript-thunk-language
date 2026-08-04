@@ -14,8 +14,10 @@
  *   abstract symbol Name { ... }
  *   symbol Name extends Parent
  *   symbol Name extends Parent { ... }
+ *   expr | fn / expr | fn(a)   (first-arg pipe)
  *
- * Expressions are kept as raw TypeScript text + span (hybrid strategy).
+ * Expressions: hybrid TS text + structural thunk/run/pipe; expression-position
+ * `run` is normalized via ANF before machine lowering.
  */
 
 import type { Range } from "./source-map";
@@ -195,6 +197,7 @@ export type Expression =
   | Identifier
   | ThunkExpression
   | RunExpression
+  | PipeExpression
   | TsExpression;
 
 export interface Identifier {
@@ -213,6 +216,17 @@ export interface RunExpression {
   readonly kind: "RunExpression";
   readonly range: Range;
   readonly expression: Expression;
+}
+
+/**
+ * Left-associative first-arg pipe: `left | right`.
+ * Lowers to `right(left)` or `callee(left, …args)` when `right` is a call.
+ */
+export interface PipeExpression {
+  readonly kind: "PipeExpression";
+  readonly range: Range;
+  readonly left: Expression;
+  readonly right: Expression;
 }
 
 /**

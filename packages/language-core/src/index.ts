@@ -1,5 +1,6 @@
 export type * from "./ast";
 export { parseThunkSource, ParseError } from "./parse";
+export { normalizeAnf } from "./anf";
 export {
   lowerSourceFile,
   lowerThunkSource,

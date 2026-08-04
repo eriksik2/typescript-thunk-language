@@ -2341,7 +2341,7 @@ return user.name
 
 These restrictions simplify the first state-machine transformation.
 
-Expression-position `run` can later be supported through ANF-style normalization into statement-position `run` before the same machine lowering.
+Expression-position `run` is supported through ANF-style normalization into statement-position `run` before the same machine lowering (see [language-reference/core/run.md](./language-reference/core/run.md) and [pipe.md](./language-reference/core/pipe.md)).
 
 ### 17.4 Variable capture
 

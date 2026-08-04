@@ -11,6 +11,7 @@ import type {
   Identifier,
   ImportDeclaration,
   ImportSpecifier,
+  PipeExpression,
   ProtocolClause,
   ProtocolDeclaration,
   ProtocolTypeFunction,
@@ -730,7 +731,61 @@ class Parser {
     return this.text.slice(start, this.pos);
   }
 
+  /**
+   * Expression grammar (pipe tighter than `run`):
+   *
+   *   expr     = runExpr
+   *   runExpr  = 'run' runExpr | pipeExpr
+   *   pipeExpr = primary ('|' primary)*
+   *   primary  = thunk | '(' expr ')' | tsAtom
+   */
   private parseExpression(): Expression {
+    return this.parseRunExpression();
+  }
+
+  private parseRunExpression(): Expression {
+    this.skipTrivia();
+    const start = this.pos;
+    if (this.matchKeyword("run")) {
+      this.skipTrivia();
+      const inner = this.parseRunExpression();
+      return {
+        kind: "RunExpression",
+        range: this.range(start, this.pos),
+        expression: inner,
+      };
+    }
+    return this.parsePipeExpression();
+  }
+
+  private parsePipeExpression(): Expression {
+    const start = this.pos;
+    let left = this.parsePrimaryExpression();
+    for (;;) {
+      this.skipTrivia();
+      if (!this.tryMatchPipeOperator()) break;
+      this.skipTrivia();
+      const right = this.parsePrimaryExpression();
+      const pipe: PipeExpression = {
+        kind: "PipeExpression",
+        range: this.range(start, this.pos),
+        left,
+        right,
+      };
+      left = pipe;
+    }
+    return left;
+  }
+
+  /** Single `|`, not `||`. */
+  private tryMatchPipeOperator(): boolean {
+    if (this.peek() !== "|") return false;
+    if (this.text[this.pos + 1] === "|") return false;
+    this.pos++;
+    return true;
+  }
+
+  private parsePrimaryExpression(): Expression {
     this.skipTrivia();
     const start = this.pos;
 
@@ -752,25 +807,9 @@ class Parser {
       return expr;
     }
 
-    if (this.matchKeyword("run")) {
-      this.skipTrivia();
-      const inner = this.parseRunOperand();
-      return {
-        kind: "RunExpression",
-        range: this.range(start, this.pos),
-        expression: inner,
-      };
-    }
-
+    // Parentheses stay inside TsExpression so suffixes like `(run x).name`
+    // and pipe left `(run x) | f` keep surrounding text / embeds intact.
     return this.parseTsExpression();
-  }
-
-  /**
-   * Operand of `run`, like `await`: a full expression (member access, calls,
-   * nested `thunk { … }`, nested `run`, …) — not only a bare identifier.
-   */
-  private parseRunOperand(): Expression {
-    return this.parseExpression();
   }
 
   private parseTsExpression(): TsExpression {
@@ -796,7 +835,9 @@ class Parser {
     while (!this.eof()) {
       const c = this.peek();
       if (depthParen === 0 && depthBrace === 0 && depthBracket === 0) {
-        if (c === ";" || c === "\n" || c === "}") break;
+        if (c === ";" || c === "\n" || c === "}" || c === ",") break;
+        // Pipe operator — leave for parsePipeExpression (not `||`)
+        if (c === "|" && this.text[this.pos + 1] !== "|") break;
       }
 
       if (
@@ -875,11 +916,8 @@ class Parser {
   }
 
   /**
-   * If at `thunk { … }`, flush pending text, parse it, and push an embedded
-   * part. Returns true when an embed was consumed.
-   *
-   * Nested `run` is not auto-detected here: `run` is too easy to confuse with
-   * property access (`x.run`) inside opaque TypeScript.
+   * If at `thunk { … }` or a nested `run` (not `x.run`), flush pending text,
+   * parse it, and push an embedded part. Returns true when an embed was consumed.
    */
   private tryEmbedThunkOrRun(
     parts: TsExpressionPart[],
@@ -903,9 +941,32 @@ class Parser {
       this.pos = save;
     }
 
+    // Nested `run` for ANF — not after `.` (property `x.run`)
+    if (this.peekKeyword("run") && !this.precededByDot()) {
+      onBeforeEmbed();
+      parts.push({
+        kind: "embedded",
+        expression: this.parseRunExpression(),
+      });
+      return true;
+    }
+
     return false;
   }
 
+  /** True when the previous non-trivia character is `.`. */
+  private precededByDot(): boolean {
+    let i = this.pos - 1;
+    while (i >= 0) {
+      const c = this.text[i]!;
+      if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+        i--;
+        continue;
+      }
+      return c === ".";
+    }
+    return false;
+  }
   private atIdentBoundary(): boolean {
     if (!this.isIdentStart(this.peek())) return false;
     if (this.pos > 0 && this.isIdentPart(this.text[this.pos - 1]!)) {

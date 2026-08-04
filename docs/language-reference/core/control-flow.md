@@ -35,6 +35,7 @@ thunk {
 - Pure control flow (no `run`) stays as ordinary JS inside `defer(() => …)`.
 - With `run`, control flow is explicit states in `machine(step)`.
 - `break` / `continue` target the enclosing loop’s exit / continue states.
+- Expression-position `run` in a `while` condition is rewritten so the `run` happens **each iteration** (see [pipe](./pipe.md) / [run](./run.md) ANF notes). Prefer statement `run` in `for` bodies rather than nested `run` in the `for` condition.
 - **`try` / `catch` / `finally` are not supported yet** (handler/finalizer state is a separate design).
 
 ## Examples
@@ -45,4 +46,5 @@ See [`examples/control-flow.thunk`](../../../examples/control-flow.thunk) (and i
 
 - [Thunk blocks](./thunk-blocks.md)
 - [run](./run.md)
+- [Pipe](./pipe.md)
 - [Bindings](./bindings.md)
