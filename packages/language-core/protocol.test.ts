@@ -37,10 +37,10 @@ describe("postfix protocols", () => {
 }
 `);
     expect(lowered.generatedText).toContain(
-      'import type { Thunk, Requires, Tag } from "@thunk/types"',
+      'import type { Thunk, Requires } from "@thunk/types"',
     );
     expect(lowered.generatedText).toContain(
-      "readonly [Requires]: Database",
+      "readonly [Requires]: typeof Database",
     );
     expect(lowered.generatedText).toContain("Thunk<number,");
   });
@@ -64,7 +64,7 @@ describe("postfix protocols", () => {
         },
       },
     ]);
-    expect(typeText).toContain("A | B");
+    expect(typeText).toContain("typeof A | typeof B");
   });
 });
 

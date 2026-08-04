@@ -24,7 +24,7 @@
       "patterns": [
         {
           "name": "keyword.control.thunk",
-          "match": "\\b(thunk|run|return|const|let)\\b"
+          "match": "\\b(thunk|run|return|const|let|symbol|protocol)\\b"
         }
       ]
     },

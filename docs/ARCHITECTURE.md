@@ -151,7 +151,9 @@ Or an equivalent branded intersection. Exact spelling is an implementation detai
 
 Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires`: `never`).
 
-**Status:** Type carrier + `MergeProtocols` (simplified to `EmptyProtocols` when empty) + hover pretty-print are landed. Postfix `Requires`/`Once` in `.thunk`, `protocol` declarations, and `Tag`/`use`/`Layer`/`provide` are landed. See `FEATURES.md` and `examples/requires.thunk`.
+**Status:** Type carrier + `MergeProtocols` (simplified to `EmptyProtocols` when empty) + hover pretty-print are landed. Postfix `Requires`/`Once` in `.thunk`, `protocol` declarations, first-class `symbol` (branding + env tags), and `use`/`Layer`/`provide` are landed. See `FEATURES.md` and `examples/requires.thunk` / `examples/symbols.thunk`.
+
+**Symbol encoding:** each `symbol Name = T` / `symbol Name { … }` lowers to a unique brand type (`T & { [__brand_Name]: … } & { __assoc: T }`) plus a callable const from `__makeSymbol` cast so `typeof Name` exposes `__assoc` for `SymbolType`. `Requires` bag keys are `typeof Name` (symbol identities).
 
 ---
 
@@ -174,7 +176,7 @@ Initial runtime representation: tagged nodes (`succeed` | `defer` | `bind` | `us
 
 ### 7.1 Chosen: hybrid front-end
 
-1. **Language-specific parser** for: `thunk`, `run`, `|` pipe, `protocol` declarations, postfix protocol type syntax.
+1. **Language-specific parser** for: `thunk`, `run`, `symbol`, `|` pipe, `protocol` declarations, postfix protocol type syntax.
 2. **TypeScript compiler API** for ordinary expressions, statements (where allowed), type annotations, and modules once those regions are ordinary TS or after local desugaring.
 3. **Thunk-body lowering** operates on a statement-oriented AST so continuations preserve lexical scope.
 
@@ -206,7 +208,7 @@ Pure string rewrites break nested scopes and produce bad maps. Statement-level A
 ```text
 packages/
   language-core/     # parse, AST, lowering, source maps  ← shared kernel
-  runtime/           # succeed, defer, bind, execute, Tag, Layer, use, provide
+  runtime/           # succeed, defer, bind, execute, __makeSymbol, Layer, use, provide
   types/             # Thunk<T, P>, ProtocolBag, Requires, utilities
   language-service/  # Volar language plugin + shared LS helpers (wraps language-core)
   vscode/            # Cursor / VS Code extension (thin host; activates on .thunk)
@@ -308,7 +310,7 @@ See `LANGUAGE.md` §§6–8. Grow the M0 lowerer/parser without protocols yet.
 
 ### M4 — `use` / `provide` / `Layer`
 
-**Status: done** for the initial tagged-env model (`createTag`, `use`, `layerOf`, `provide`, env-aware `execute`). See `examples/requires.thunk`.
+**Status: done** for the symbol-env model (`symbol` decls → `__makeSymbol`, `use`, `layerOf`, `provide`, env-aware `execute`). See `examples/requires.thunk` and `examples/symbols.thunk`.
 
 ---
 

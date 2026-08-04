@@ -1,12 +1,9 @@
-// Example: Requires + use / provide (type-checked via lowering in editor)
-
-const Database = createTag<{ name: string }>("Database")
+// Example: Requires + use / provide via first-class symbol
 
 symbol Database {
+  name: string
+}
 
-};
-
- 
 const fetchUser = thunk {
   const db = run use(Database)
   return db.name

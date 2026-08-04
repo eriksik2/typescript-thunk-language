@@ -1367,35 +1367,58 @@ The identity is supplied by `succeed<>` (see §22.2).
 
 ## 10. The `Requires` Protocol
 
-### 10.1 Tags
+### 10.1 Symbols (branding + env tags)
 
-A tag is a typed runtime identity for a service.
-
-Conceptual declaration:
+A `symbol` declaration introduces **one value** and **one nominal type** with the same name:
 
 ```ts
-interface Tag<
-  Service
-> {
-  readonly key:
-    unique symbol
+symbol Age = number
+symbol Database {
+  name: string
 }
 ```
 
-Example:
+The object-body form is sugar for `symbol Database = { name: string }`.
+
+**Semantics**
+
+1. **Value** `Name` has type conceptually `symbol T` (identity typed by associated type `T`). It is **callable**: `Name(x: T) => Name` (branded intro).
+2. **Type** `Name` is the **branded** type of inhabitants (nominal over `T`).
+3. Assignability: `Name` → `T` allowed; `T` → `Name` only via `Name(...)`.
+4. `typeof Name` is the symbol identity. `typeof brandedValue` is `Name`.
+5. `SymbolType<X>` extracts `T` from either the identity or a branded inhabitant.
+6. Env APIs take the **value** `Name` and an `impl: SymbolType<typeof Name>` (`use` / `layerOf` / `provide`).
+7. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape.
+8. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
+
+Example (branding):
 
 ```ts
-const Database:
-  Tag<DatabaseService>
-
-const Logger:
-  Tag<LoggerService>
+symbol Age = number
+const a: Age = Age(30)
+const n: number = a   // ok
+// const bad: Age = 30 // error
 ```
 
-The tag identifies:
+Example (env / Requires):
 
-1. the service type at compile time;
-2. the service entry at runtime.
+```ts
+symbol Database {
+  name: string
+}
+
+const fetchUser = thunk {
+  const db = run use(Database)
+  return db.name
+}
+
+const program: Thunk<string> = provide(
+  fetchUser,
+  layerOf(Database, { name: "ada" }),
+)
+```
+
+See `examples/symbols.thunk` and `examples/requires.thunk`.
 
 ### 10.2 `Requires`
 
@@ -1403,7 +1426,7 @@ Initial declaration:
 
 ```ts
 protocol Requires<
-  Tags extends Tag<any>
+  Tags extends ThunkSymbol<any>
 > {
   bind<A, B>:
     A | B;

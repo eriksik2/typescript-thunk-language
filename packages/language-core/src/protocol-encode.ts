@@ -11,6 +11,57 @@ export interface EncodedProtocolBag {
 }
 
 /**
+ * Encode a Requires payload so bag keys are symbol identities.
+ * Bare identifiers become `typeof Name`; unions are mapped per part.
+ */
+export function encodeRequiresPayload(payload: string): string {
+  return splitTopLevelUnion(payload)
+    .map(encodeRequiresPayloadPart)
+    .join(" | ");
+}
+
+function encodeRequiresPayloadPart(part: string): string {
+  const t = part.trim();
+  if (!t) return t;
+  if (/^typeof\s+\w+$/.test(t)) return t;
+  if (/^\w+$/.test(t)) return `typeof ${t}`;
+  return t;
+}
+
+/** Split `A | B | C` on top-level `|` (angle/brace/paren aware). */
+function splitTopLevelUnion(text: string): string[] {
+  const parts: string[] = [];
+  let depthAngle = 0;
+  let depthBrace = 0;
+  let depthParen = 0;
+  let depthBracket = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === "<") depthAngle++;
+    else if (c === ">") depthAngle--;
+    else if (c === "{") depthBrace++;
+    else if (c === "}") depthBrace--;
+    else if (c === "(") depthParen++;
+    else if (c === ")") depthParen--;
+    else if (c === "[") depthBracket++;
+    else if (c === "]") depthBracket--;
+    else if (
+      c === "|" &&
+      depthAngle === 0 &&
+      depthBrace === 0 &&
+      depthParen === 0 &&
+      depthBracket === 0
+    ) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
+/**
  * Normalize repeated Requires by unioning payloads; flag protocols once.
  */
 export function encodeProtocolBag(
@@ -26,7 +77,7 @@ export function encodeProtocolBag(
   for (const p of protocols) {
     if (p.name === "Requires") {
       if (p.payload && p.payload.trim()) {
-        requiresPayloads.push(p.payload.trim());
+        requiresPayloads.push(encodeRequiresPayload(p.payload.trim()));
       }
     } else {
       flags.add(p.name);

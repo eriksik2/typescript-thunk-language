@@ -781,24 +781,31 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 ---
 
-## 7.2 `Tag<Service>`
+## 7.2 `symbol` (branding + Requires tags)
 
 | | |
 |---|---|
-| **Status** | **Done** (`createTag`) |
+| **Status** | **Done** |
 | **Milestone** | M4 |
 
 **What it should look like.**
 
 ```ts
-const Database = createTag<DatabaseService>("Database")
+symbol Age = number
+symbol Database { name: string }
+
+const a: Age = Age(30)
+const db = run use(Database)
 ```
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| Tag | Compile-time service type + runtime `symbol` key |
+| `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
+| `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
+| `use` / `layerOf` / `provide` | Env keyed by `Database.key`; Requires payload is identity |
+| `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
 ---
 
@@ -812,7 +819,7 @@ const Database = createTag<DatabaseService>("Database")
 **What it should look like.**
 
 ```ts
-function use<T extends Tag<any>>(tag: T): Thunk<InferTag<T>> Requires(T)
+function use<S extends ThunkSymbol<any>>(sym: S): Thunk<SymbolType<S>> Requires(S)
 ```
 
 **Cases**
@@ -1062,7 +1069,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Protocol normalization / inference | Done (`Requires`) | M3 |
 | `protocol` declarations | Partial (aliases emitted) | M3 |
 | `Requires` + `CompileError` on execute | Done | M3–M4 |
-| `Tag` / `use` / `Layer` / `provide` | Done | M4 |
+| `symbol` / `use` / `Layer` / `provide` | Done | M4 |
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |

@@ -183,7 +183,14 @@ function entryFromKey(key: string, payload: string): ProtocolEntry {
     return { name: key };
   }
   // never alone shouldn't appear for Requires in pretty form; still show
-  return { name: key, payload: cleaned };
+  return { name: key, payload: prettyRequiresPayload(cleaned) };
+}
+
+/**
+ * Surface display: `typeof Database | typeof Logger` → `Database | Logger`.
+ */
+function prettyRequiresPayload(payload: string): string {
+  return payload.replace(/\btypeof\s+(\w+)/g, "$1");
 }
 
 /**

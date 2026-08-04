@@ -14,6 +14,28 @@ describe("parse", () => {
     expect(init.kind).toBe("ThunkExpression");
     expect(init.body).toHaveLength(2);
   });
+
+  test("parses symbol alias and object forms", () => {
+    const alias = parseThunkSource(`symbol Age = number\n`);
+    expect(alias.statements[0]?.kind).toBe("SymbolDeclaration");
+    const aliasDecl = alias.statements[0] as {
+      name: { name: string };
+      associatedType: { form: string; text: string };
+    };
+    expect(aliasDecl.name.name).toBe("Age");
+    expect(aliasDecl.associatedType.form).toBe("alias");
+    expect(aliasDecl.associatedType.text).toBe("number");
+
+    const obj = parseThunkSource(`symbol Database {
+  name: string
+}
+`);
+    const objDecl = obj.statements[0] as {
+      associatedType: { form: string; text: string };
+    };
+    expect(objDecl.associatedType.form).toBe("object");
+    expect(objDecl.associatedType.text).toContain("name: string");
+  });
 });
 
 describe("lower", () => {
@@ -27,5 +49,31 @@ describe("lower", () => {
     expect(lowered.generatedText).toContain("succeed(");
     expect(lowered.generatedText).toContain("defer(");
     expect(lowered.sourceMap.mappings.length).toBeGreaterThan(0);
+  });
+
+  test("lowers symbol declaration to brand + __makeSymbol", () => {
+    const lowered = lowerThunkSource(`symbol Age = number
+const a: Age = Age(30)
+`);
+    expect(lowered.generatedText).toContain("__makeSymbol");
+    expect(lowered.generatedText).toContain("declare const __brand_Age");
+    expect(lowered.generatedText).toContain("type Age = number &");
+    expect(lowered.generatedText).toContain('__makeSymbol<number>("Age")');
+    expect(lowered.generatedText).not.toContain("createTag");
+  });
+
+  test("lowers requires.thunk-style symbol + use", () => {
+    const lowered = lowerThunkSource(`symbol Database {
+  name: string
+}
+
+const fetchUser = thunk {
+  const db = run use(Database)
+  return db.name
+}
+`);
+    expect(lowered.generatedText).toContain("__makeSymbol");
+    expect(lowered.generatedText).toContain("use(Database)");
+    expect(lowered.generatedText).toContain("type Database =");
   });
 });

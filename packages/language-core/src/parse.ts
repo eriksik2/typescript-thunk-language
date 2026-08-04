@@ -13,6 +13,7 @@ import type {
   ProtocolTypeFunction,
   SourceFile,
   Statement,
+  SymbolDeclaration,
   ThunkExpression,
   TsExpression,
   TypeAnnotation,
@@ -56,6 +57,10 @@ class Parser {
 
     if (this.peekKeyword("protocol")) {
       return this.parseProtocolDeclaration(start);
+    }
+
+    if (this.peekKeyword("symbol")) {
+      return this.parseSymbolDeclaration(start);
     }
 
     if (this.peekKeyword("return")) {
@@ -271,6 +276,102 @@ class Parser {
       typeParams: typeParams.replace(/^</, "").replace(/>$/, "").trim(),
       members,
     };
+  }
+
+  /**
+   * `symbol Name = Type;` or `symbol Name { ... }`
+   * Not parsed in expression position (anonymous symbols deferred).
+   */
+  private parseSymbolDeclaration(start: number): SymbolDeclaration {
+    this.matchKeyword("symbol");
+    this.skipTrivia();
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+
+    if (this.peek() === "{") {
+      const typeStart = this.pos;
+      const braces = this.consumeBalanced("{", "}");
+      this.expectSemiOrNewline();
+      return {
+        kind: "SymbolDeclaration",
+        name,
+        associatedType: {
+          form: "object",
+          text: braces,
+          range: this.range(typeStart, typeStart + braces.length),
+        },
+        range: this.range(start, this.pos),
+      };
+    }
+
+    this.expect("=");
+    this.skipTrivia();
+    const typeStart = this.pos;
+    const aliasText = this.consumeAssociatedTypeAlias();
+    this.expectSemiOrNewline();
+    return {
+      kind: "SymbolDeclaration",
+      name,
+      associatedType: {
+        form: "alias",
+        text: aliasText,
+        range: this.range(typeStart, typeStart + aliasText.length),
+      },
+      range: this.range(start, this.pos),
+    };
+  }
+
+  /**
+   * Associated type after `symbol Name =` — stop at `;` or newline at depth 0
+   * (unlike type annotations, which continue until `=`).
+   */
+  private consumeAssociatedTypeAlias(): string {
+    const start = this.pos;
+    let depthParen = 0;
+    let depthBrace = 0;
+    let depthAngle = 0;
+    let depthBracket = 0;
+
+    while (!this.eof()) {
+      const c = this.peek();
+      if (
+        depthParen === 0 &&
+        depthBrace === 0 &&
+        depthAngle === 0 &&
+        depthBracket === 0
+      ) {
+        if (c === ";" || c === "\n") break;
+      }
+      if (c === "(") depthParen++;
+      else if (c === ")") {
+        if (depthParen === 0) break;
+        depthParen--;
+      } else if (c === "{") depthBrace++;
+      else if (c === "}") {
+        if (depthBrace === 0) break;
+        depthBrace--;
+      } else if (c === "<") depthAngle++;
+      else if (c === ">") {
+        if (depthAngle === 0) break;
+        depthAngle--;
+      } else if (c === "[") depthBracket++;
+      else if (c === "]") {
+        if (depthBracket === 0) break;
+        depthBracket--;
+      } else if (c === '"' || c === "'" || c === "`") {
+        this.consumeString(c);
+        continue;
+      }
+      this.pos++;
+    }
+
+    const raw = this.text.slice(start, this.pos);
+    const trimmed = raw.trimEnd();
+    if (!trimmed) {
+      throw new ParseError("expected type", start);
+    }
+    this.pos = start + trimmed.length;
+    return trimmed;
   }
 
   private parseProtocolMember(): ProtocolTypeFunction {

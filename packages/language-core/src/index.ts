@@ -8,6 +8,7 @@ export {
 } from "./lower";
 export {
   encodeProtocolBag,
+  encodeRequiresPayload,
   encodeThunkTypeAnnotation,
 } from "./protocol-encode";
 export {

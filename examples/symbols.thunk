@@ -1,0 +1,6 @@
+// Example: symbol branding (nominal over associated type)
+
+symbol Age = number
+
+const a: Age = Age(30)
+const n: number = a

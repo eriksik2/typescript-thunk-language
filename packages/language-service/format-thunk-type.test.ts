@@ -19,6 +19,21 @@ describe("formatThunkType", () => {
     ).toBe("Thunk<User>\n  Requires(Database | Logger)");
   });
 
+  test("typeof Requires payload → bare symbol names", () => {
+    expect(
+      formatThunkType(
+        "string",
+        "{ readonly [Requires]: typeof Database }",
+      ),
+    ).toBe("Thunk<string>\n  Requires(Database)");
+    expect(
+      formatThunkType(
+        "User",
+        "{ readonly [Requires]: typeof Database | typeof Logger }",
+      ),
+    ).toBe("Thunk<User>\n  Requires(Database | Logger)");
+  });
+
   test("void payload → flag protocol (Once)", () => {
     expect(formatThunkType("T", "{ Once: void }")).toBe("Thunk<T>\n  Once");
   });

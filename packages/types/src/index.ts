@@ -18,7 +18,7 @@ export type ProtocolBag<P extends Record<PropertyKey, unknown> = EmptyProtocols>
 
 /**
  * Identity of the built-in `Requires` protocol.
- * Used as a key in `ProtocolBag` (not a runtime Tag).
+ * Used as a key in `ProtocolBag` (not a runtime symbol value).
  */
 export declare const Requires: unique symbol;
 export type Requires = typeof Requires;
@@ -35,7 +35,42 @@ export type Thunk<T, P extends ProtocolBag = EmptyProtocols> = {
   readonly __protocols: P;
 };
 
-/** Bag containing only a `Requires` entry. */
+/**
+ * Symbol identity typed by associated payload `T`
+ * (`typeof Age` displays conceptually as `symbol T`).
+ *
+ * `__thunkSymbol` is a string phantom (not `unique symbol`) so lowered
+ * const casts remain assignable across declaration sites.
+ */
+export type ThunkSymbol<T> = {
+  readonly __thunkSymbol?: "ThunkSymbol";
+  readonly __assoc: T;
+  readonly key: symbol;
+};
+
+/**
+ * Extract associated type `T` from a symbol identity (`typeof Name`)
+ * or a branded inhabitant that carries `__assoc`.
+ */
+export type SymbolType<S> = S extends { readonly __assoc: infer T } ? T : never;
+
+/**
+ * Phantom intersected onto branded types so `SymbolType<Name>` works.
+ * Type-level only — not present at runtime.
+ */
+export type BrandCarrier<T> = {
+  readonly __assoc: T;
+};
+
+/**
+ * Nominal brand over associated type `T`, keyed by a unique brand key.
+ * Emitted by the lowerer for each `symbol` declaration.
+ */
+export type Branded<T, Brand extends PropertyKey> = T & {
+  readonly [K in Brand]: Brand;
+} & BrandCarrier<T>;
+
+/** Bag containing only a `Requires` entry (keys are symbol identities). */
 export type WithRequires<Tags> = ProtocolBag<{ readonly [Requires]: Tags }>;
 
 /** Payload of `Requires` in `P`, or `never` when absent (identity). */
@@ -111,7 +146,7 @@ export type ReturnType<T extends Thunk<any, any>> = ThunkReturnType<T>;
 
 /**
  * Remove provided requirement tags from a bag (`provide`).
- * `S` is the union of tag types supplied by a Layer.
+ * `S` is the union of symbol identity types supplied by a Layer.
  */
 export type ProvideRequires<
   P extends ProtocolBag,
@@ -124,10 +159,10 @@ export type ProvideRequires<
         readonly [Requires]: Exclude<GetRequires<P>, S>;
       };
 
-/** Typed service identity (compile-time service + runtime key). */
-export type Tag<Service = unknown> = {
-  readonly key: symbol;
-  readonly __service?: Service;
-};
+/**
+ * @deprecated Prefer `ThunkSymbol`. Kept as a thin alias during migration.
+ */
+export type Tag<Service = unknown> = ThunkSymbol<Service>;
 
-export type InferTag<T> = T extends Tag<infer S> ? S : never;
+/** @deprecated Prefer `SymbolType`. */
+export type InferTag<T> = SymbolType<T>;

@@ -7,6 +7,7 @@ import type {
   ProtocolDeclaration,
   SourceFile,
   Statement,
+  SymbolDeclaration,
   ThunkExpression,
   TypeAnnotation,
   VariableStatement,
@@ -33,6 +34,7 @@ class Emitter {
   private line = 0;
   private character = 0;
   private needsTypesImport = false;
+  private needsMakeSymbol = false;
 
   constructor(
     private readonly originalText: string,
@@ -42,13 +44,27 @@ class Emitter {
 
   emitFile(ast: SourceFile): LoweredFile {
     this.needsTypesImport = fileNeedsTypesImport(ast);
+    this.needsMakeSymbol = fileHasSymbolDecls(ast);
 
+    const runtimeNames = [
+      "succeed",
+      "defer",
+      "bind",
+      "execute",
+      "use",
+      "provide",
+      "layerOf",
+      "mergeLayers",
+    ];
+    if (this.needsMakeSymbol) {
+      runtimeNames.push("__makeSymbol");
+    }
     this.write(
-      `import { succeed, defer, bind, execute, use, provide, layerOf, createTag, mergeLayers } from "${this.runtimeImportPath}";\n`,
+      `import { ${runtimeNames.join(", ")} } from "${this.runtimeImportPath}";\n`,
     );
     if (this.needsTypesImport) {
       this.write(
-        `import type { Thunk, Requires, Tag } from "${this.typesImportPath}";\n`,
+        `import type { Thunk, Requires } from "${this.typesImportPath}";\n`,
       );
     }
     this.write("\n");
@@ -78,9 +94,34 @@ class Emitter {
       case "ProtocolDeclaration":
         this.emitProtocolDeclaration(stmt);
         return;
+      case "SymbolDeclaration":
+        this.emitSymbolDeclaration(stmt);
+        return;
       case "ReturnStatement":
         throw new Error("return is only valid inside thunk bodies");
     }
+  }
+
+  private emitSymbolDeclaration(decl: SymbolDeclaration): void {
+    const name = decl.name.name;
+    const assoc =
+      decl.associatedType.form === "object"
+        ? decl.associatedType.text
+        : decl.associatedType.text;
+    const brand = `__brand_${name}`;
+
+    this.writeMapped(`declare const ${brand}: unique symbol;\n`, decl.range);
+    this.writeMapped(
+      `type ${name} = ${assoc} & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: ${assoc} };\n`,
+      decl.name.range,
+    );
+    this.writeMapped(
+      `const ${name} = __makeSymbol<${assoc}>(${JSON.stringify(name)}) as unknown as ` +
+        `((value: ${assoc}) => ${name}) & ` +
+        `{ readonly key: symbol; readonly __assoc: ${assoc} };\n`,
+      decl.name.range,
+    );
+    this.write("\n");
   }
 
   private emitVariableStatement(stmt: VariableStatement): void {
@@ -267,6 +308,8 @@ class Emitter {
         return;
       case "ProtocolDeclaration":
         throw new Error("protocol declarations are only valid at top level");
+      case "SymbolDeclaration":
+        throw new Error("symbol declarations are only valid at top level");
     }
   }
 
@@ -321,6 +364,10 @@ function isRunBindingStatement(stmt: Statement): boolean {
     return stmt.expression.kind === "RunExpression";
   }
   return false;
+}
+
+function fileHasSymbolDecls(ast: SourceFile): boolean {
+  return ast.statements.some((s) => s.kind === "SymbolDeclaration");
 }
 
 function fileNeedsTypesImport(ast: SourceFile): boolean {

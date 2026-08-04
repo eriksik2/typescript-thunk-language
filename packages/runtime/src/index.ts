@@ -5,12 +5,12 @@
 import type {
   EmptyProtocols,
   ExecuteResult,
-  InferTag,
   MergeProtocols,
   ProtocolBag,
   ProvideRequires,
-  Tag,
+  SymbolType,
   Thunk,
+  ThunkSymbol,
   WithRequires,
 } from "@thunk/types";
 
@@ -41,7 +41,7 @@ interface BindNode<A, B> {
 
 interface UseNode<T> {
   readonly kind: "use";
-  readonly tag: Tag<T>;
+  readonly sym: ThunkSymbol<T>;
 }
 
 interface ProvideNode<T> {
@@ -60,9 +60,32 @@ function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
   return thunk as unknown as ThunkNode<T>;
 }
 
-/** Create a unique service tag. */
-export function createTag<Service>(description?: string): Tag<Service> {
-  return { key: Symbol(description ?? "Tag") };
+/**
+ * Runtime helper used by the lowerer for `symbol` declarations.
+ * Returns a callable brand intro that carries `.key` for env maps.
+ */
+export function __makeSymbol<T>(
+  name: string,
+): ((value: T) => T) & ThunkSymbol<T> {
+  const key = Symbol(name);
+  const brand = ((value: T) => value) as ((value: T) => T) & ThunkSymbol<T>;
+  Object.defineProperty(brand, "key", {
+    value: key,
+    enumerable: true,
+    configurable: false,
+    writable: false,
+  });
+  return brand;
+}
+
+/**
+ * @deprecated Prefer `symbol` declarations (lowered via `__makeSymbol`).
+ * Low-level escape hatch kept for migration.
+ */
+export function createTag<Service>(
+  description?: string,
+): ((value: Service) => Service) & ThunkSymbol<Service> {
+  return __makeSymbol<Service>(description ?? "Tag");
 }
 
 /** Completed thunk — empty protocol bag. */
@@ -95,41 +118,44 @@ export function bind<
   return asThunk({
     kind: "bind",
     source: asNode(source),
-    continuation: (value) => asNode(continuation(value)),
+    continuation: (value) => asNode(continuation(value as A)),
   });
 }
 
 /**
  * Read a service from the current environment.
- * Introduces `Requires(tag)` on the thunk type.
+ * Introduces `Requires(sym)` on the thunk type (symbol identity).
  */
-export function use<T extends Tag<any>>(
-  tag: T,
-): Thunk<InferTag<T>, WithRequires<T>> {
-  return asThunk({ kind: "use", tag: tag as Tag<InferTag<T>> });
+export function use<S extends ThunkSymbol<any>>(
+  sym: S,
+): Thunk<SymbolType<S>, WithRequires<S>> {
+  return asThunk({
+    kind: "use",
+    sym: sym as ThunkSymbol<SymbolType<S>>,
+  });
 }
 
-/** Environment fragment providing one or more tags. */
-export type Layer<S extends Tag<any> = Tag<any>> = {
+/** Environment fragment providing one or more symbol identities. */
+export type Layer<S extends ThunkSymbol<any> = ThunkSymbol<any>> = {
   readonly entries: ReadonlyMap<symbol, unknown>;
   readonly __tags?: S;
 };
 
-/** Build a layer from a single tag implementation. */
-export function layerOf<T extends Tag<any>>(
-  tag: T,
-  implementation: InferTag<T>,
-): Layer<T> {
+/** Build a layer from a single symbol implementation. */
+export function layerOf<S extends ThunkSymbol<any>>(
+  sym: S,
+  implementation: SymbolType<S>,
+): Layer<S> {
   return {
-    entries: new Map([[tag.key, implementation]]),
+    entries: new Map([[sym.key, implementation]]),
   };
 }
 
 /** Merge layers (later entries win). */
-export function mergeLayers<A extends Tag<any>, B extends Tag<any>>(
-  a: Layer<A>,
-  b: Layer<B>,
-): Layer<A | B> {
+export function mergeLayers<
+  A extends ThunkSymbol<any>,
+  B extends ThunkSymbol<any>,
+>(a: Layer<A>, b: Layer<B>): Layer<A | B> {
   const entries = new Map(a.entries);
   for (const [k, v] of b.entries) entries.set(k, v);
   return { entries };
@@ -137,9 +163,9 @@ export function mergeLayers<A extends Tag<any>, B extends Tag<any>>(
 
 /**
  * Provide a layer for the duration of `thunk`.
- * Removes provided tags from the `Requires` payload.
+ * Removes provided symbol identities from the `Requires` payload.
  */
-export function provide<T, P extends ProtocolBag, S extends Tag<any>>(
+export function provide<T, P extends ProtocolBag, S extends ThunkSymbol<any>>(
   thunk: Thunk<T, P>,
   layer: Layer<S>,
 ): Thunk<T, ProvideRequires<P, S>> {
@@ -172,12 +198,12 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
       return executeNode(thunk.continuation(value), env);
     }
     case "use": {
-      if (!env.has(thunk.tag.key)) {
+      if (!env.has(thunk.sym.key)) {
         throw new Error(
-          `No implementation in environment for tag ${String(thunk.tag.key.description ?? "Tag")}`,
+          `No implementation in environment for symbol ${String(thunk.sym.key.description ?? "symbol")}`,
         );
       }
-      return env.get(thunk.tag.key) as T;
+      return env.get(thunk.sym.key) as T;
     }
     case "provide": {
       const child: Environment = new Map(env);
@@ -195,8 +221,8 @@ export type {
   ProtocolBag,
   MergeProtocols,
   ExecuteResult,
-  Tag,
-  InferTag,
+  ThunkSymbol,
+  SymbolType,
   WithRequires,
   ProvideRequires,
 };

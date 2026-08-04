@@ -3,6 +3,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import type {
+  BrandCarrier,
+  Branded,
   CompileError,
   EmptyProtocols,
   ExecuteResult,
@@ -12,8 +14,10 @@ import type {
   Requires,
   RequiresBind,
   Strip,
+  SymbolType,
   Thunk,
   ThunkReturnType,
+  ThunkSymbol,
   WithRequires,
 } from "./src/index";
 
@@ -92,5 +96,46 @@ describe("@thunk/types", () => {
     type G = ExpectEqual<GetRequires<Bag>, "X">;
     const _g: G = true;
     expect(_g).toBe(true);
+  });
+
+  test("SymbolType extracts assoc from identity and branded", () => {
+    type Id = ThunkSymbol<{ name: string }>;
+    type FromId = ExpectEqual<SymbolType<Id>, { name: string }>;
+
+    declare const __brand_Age: unique symbol;
+    type Age = Branded<number, typeof __brand_Age>;
+    type FromBrand = ExpectEqual<SymbolType<Age>, number>;
+
+    const _i: FromId = true;
+    const _b: FromBrand = true;
+    expect(_i && _b).toBe(true);
+  });
+
+  test("branded Age assigns to number, not reverse", () => {
+    declare const __brand_Age: unique symbol;
+    type Age = Branded<number, typeof __brand_Age>;
+
+    type AgeToNumber = ExpectExtends<Age, number>;
+    // number is not assignable to Age
+    type NumberToAge = number extends Age ? true : false;
+    type NotReverse = ExpectEqual<NumberToAge, false>;
+
+    const age = 30 as Age;
+    const n: number = age;
+    expect(n).toBe(30);
+
+    const _a: AgeToNumber = true;
+    const _r: NotReverse = true;
+    expect(_a && _r).toBe(true);
+  });
+
+  test("Requires bag keys are symbol identities", () => {
+    type Db = ThunkSymbol<{ query: () => string }>;
+    type Bag = WithRequires<Db>;
+    type Req = ExpectEqual<GetRequires<Bag>, Db>;
+    type Carrier = ExpectExtends<Db, BrandCarrier<{ query: () => string }>>;
+    const _r: Req = true;
+    const _c: Carrier = true;
+    expect(_r && _c).toBe(true);
   });
 });

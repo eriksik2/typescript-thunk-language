@@ -7,6 +7,8 @@
  *   run expr
  *   return expr
  *   protocol Name<...> { bind<A,B>: ...; ... }
+ *   symbol Name = Type;
+ *   symbol Name { ... }
  *
  * Expressions are kept as raw TypeScript text + span (hybrid strategy).
  */
@@ -24,7 +26,26 @@ export type Statement =
   | VariableStatement
   | ReturnStatement
   | ExpressionStatement
-  | ProtocolDeclaration;
+  | ProtocolDeclaration
+  | SymbolDeclaration;
+
+/** Associated type of a `symbol` declaration. */
+export interface SymbolAssociatedType {
+  readonly form: "alias" | "object";
+  readonly text: string;
+  readonly range: Range;
+}
+
+/**
+ * `symbol Name = Type;` or `symbol Name { ... }` (object sugar).
+ * Introduces value `Name` and branded type `Name`.
+ */
+export interface SymbolDeclaration {
+  readonly kind: "SymbolDeclaration";
+  readonly name: Identifier;
+  readonly associatedType: SymbolAssociatedType;
+  readonly range: Range;
+}
 
 export interface ProtocolClause {
   readonly name: string;
