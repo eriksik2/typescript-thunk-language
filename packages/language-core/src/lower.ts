@@ -1,11 +1,11 @@
 /**
  * Lower Thunk AST → TypeScript text + source maps.
  *
- * M0 rules:
  * - `thunk { body }` → `defer(() => <lowered body>)`
  * - `run expr` inside thunk → `bind(expr, value => …)`
  * - `run expr` at top level → `execute(expr)`
- * - `return expr` inside thunk → `succeed(expr)`
+ * - `return expr` at thunk statement-list → `succeed(expr)`
+ * - Opaque TsStatement control flow is emitted as-is inside defer/bind bodies
  */
 
 import type { Expression, SourceFile, Statement, ThunkExpression } from "./ast";
@@ -52,6 +52,9 @@ class Emitter {
       case "VariableStatement": {
         this.write(`${stmt.declarationKind} `);
         this.writeMapped(stmt.name.name, stmt.name.range);
+        if (stmt.typeAnnotation) {
+          this.write(`: ${stmt.typeAnnotation}`);
+        }
         this.write(" = ");
         this.emitTopLevelExpression(stmt.initializer);
         this.write(";\n");
@@ -62,8 +65,16 @@ class Emitter {
         this.write(";\n");
         return;
       }
+      case "TsStatement": {
+        this.writeMapped(stmt.text, stmt.range);
+        if (!stmt.text.endsWith("}") && !stmt.text.endsWith(";")) {
+          this.write(";");
+        }
+        this.write("\n");
+        return;
+      }
       case "ReturnStatement":
-        throw new Error("return is only valid inside thunk bodies (M0)");
+        throw new Error("return is only valid inside thunk bodies");
     }
   }
 
@@ -82,7 +93,6 @@ class Emitter {
   }
 
   private emitThunk(expr: ThunkExpression): void {
-    // Map only the `thunk` keyword span, not the whole body (avoids overlapping maps).
     const thunkKeyword: Range = {
       start: expr.range.start,
       end: {
@@ -133,7 +143,7 @@ class Emitter {
     ) {
       bindSource = runStmt.expression.expression;
     } else {
-      throw new Error("run must be in statement position (M0)");
+      throw new Error("run must be in statement position");
     }
 
     this.write("bind(");
@@ -192,6 +202,9 @@ class Emitter {
         }
         this.write(`${stmt.declarationKind} `);
         this.writeMapped(stmt.name.name, stmt.name.range);
+        if (stmt.typeAnnotation) {
+          this.write(`: ${stmt.typeAnnotation}`);
+        }
         this.write(" = ");
         if (stmt.initializer.kind === "ThunkExpression") {
           this.emitThunk(stmt.initializer);
@@ -204,6 +217,14 @@ class Emitter {
       case "ExpressionStatement": {
         this.emitValueExpression(stmt.expression);
         this.write(";\n");
+        return;
+      }
+      case "TsStatement": {
+        this.writeMapped(stmt.text, stmt.range);
+        if (!stmt.text.endsWith("}") && !stmt.text.endsWith(";")) {
+          this.write(";");
+        }
+        this.write("\n");
         return;
       }
       case "ReturnStatement":

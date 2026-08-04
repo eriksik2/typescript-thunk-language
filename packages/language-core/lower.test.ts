@@ -28,4 +28,27 @@ describe("lower", () => {
     expect(lowered.generatedText).toContain("defer(");
     expect(lowered.sourceMap.mappings.length).toBeGreaterThan(0);
   });
+
+  test("preserves control flow inside thunk bodies", () => {
+    const lowered = lowerThunkSource(`const program = thunk {
+  let total = 0
+  for (const value of values) {
+    if (value > 0) {
+      total += value
+    }
+  }
+  switch (total) {
+    case 0:
+      total = -1
+      break
+    default:
+      break
+  }
+  return total
+}
+`);
+    expect(lowered.generatedText).toContain("for (const value of values)");
+    expect(lowered.generatedText).toContain("switch (total)");
+    expect(lowered.generatedText).toContain("succeed(total)");
+  });
 });
