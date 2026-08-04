@@ -39,7 +39,9 @@ export interface CreateThunkProjectOptions {
   shims?: Record<string, string>;
   /** Map module name → absolute file path */
   moduleMap?: Record<string, string>;
-  /** Passed to lowerThunkSource */
+  /** Passed to lowerThunkSource — compiler helpers path */
+  internalImportPath?: string;
+  /** @deprecated Use internalImportPath */
   runtimeImportPath?: string;
   compilerOptions?: ts.CompilerOptions;
 }
@@ -52,7 +54,10 @@ export function createThunkProject(
 
   for (const [fileName, text] of Object.entries(options.files)) {
     const lowered = lowerThunkSource(text, fileName, {
-      runtimeImportPath: options.runtimeImportPath ?? "@thunk/runtime",
+      internalImportPath:
+        options.internalImportPath ??
+        options.runtimeImportPath ??
+        "@thunk/runtime/internal",
     });
     loweredByOriginal.set(path.normalize(fileName), lowered);
     virtualTs.set(path.normalize(lowered.fileName), lowered.generatedText);

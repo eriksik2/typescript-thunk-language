@@ -21,10 +21,11 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 | Package | Role |
 |---|---|
 | `@thunk/language-core` | Parse, AST, lowering, source maps |
-| `@thunk/runtime` | `succeed` / `defer` / `bind` / `execute` / `use` / `provide` / `Layer` |
-| `@thunk/types` | `Thunk` encoding, `Requires`, `ThunkSymbol` / `SymbolType`, protocol utilities |
+| `@thunk/runtime` | Author APIs: `use` / `provide` / `layerOf` / `mergeLayers` (explicit import) |
+| `@thunk/runtime/internal` | Compiler helpers: `succeed` / `defer` / `bind` / `execute` / `__makeSymbol` |
+| `@thunk/types` | `Thunk` encoding, `Requires`, `ThunkSymbol` / `SymbolType` (`Thunk` auto-injected) |
 | `@thunk/language-service` | TS LS host (M0) + Volar language plugin / server |
-| `@thunk/compiler` | CLI lower + emit (`bun run thunk -- build …`) |
+| `@thunk/compiler` | CLI: `thunk build` / `thunk run` |
 | `@thunk/vscode` | Editor extension — [setup & F5](./packages/vscode/README.md) |
 
 ## Develop
@@ -35,7 +36,9 @@ bun run proof:hover      # hover: Thunk<number> + run binding number
 bun run proof:requires   # symbol + Requires(Database) surface hover
 bun run test             # core + types + runtime + language-service
 bun run thunk -- build examples/basic.thunk
-bun run thunk -- build examples/requires.thunk   # symbol + use / provide
+bun run thunk -- run examples/basic.thunk
+bun run thunk -- build examples/requires.thunk   # needs: import { use, provide, layerOf } from "@thunk/runtime"
+bun run thunk -- run examples/requires.thunk
 bun run thunk -- build examples/symbols.thunk    # branding
 bun run build:editor   # language-server + vscode extension
 ```

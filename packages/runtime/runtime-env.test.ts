@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { layerOf, provide, use } from "./src/index";
 import {
   __makeSymbol,
   bind,
   execute,
-  layerOf,
-  provide,
   succeed,
-  use,
-} from "./src/index";
+} from "./src/internal";
 import type {
   ExecuteResult,
   GetRequires,

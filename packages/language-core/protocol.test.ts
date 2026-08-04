@@ -40,6 +40,10 @@ describe("postfix protocols", () => {
       'import type { Thunk, Requires } from "@thunk/types"',
     );
     expect(lowered.generatedText).toContain(
+      'import { succeed, defer, bind, execute } from "@thunk/runtime/internal"',
+    );
+    expect(lowered.generatedText).not.toContain("layerOf");
+    expect(lowered.generatedText).toContain(
       "readonly [Requires]: typeof Database",
     );
     expect(lowered.generatedText).toContain("Thunk<number,");

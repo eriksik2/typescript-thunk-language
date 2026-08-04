@@ -1,12 +1,14 @@
 # Thunk Language — Language Design
 
 **Status:** Canonical language description  
-**Companion:** Implementation, editor packaging, and milestones live in [`ARCHITECTURE.md`](./ARCHITECTURE.md).  
-**Feature checklist:** Per-feature status, examples, and expected behavior → [`FEATURES.md`](./FEATURES.md).
+**Companion:** Implementation, editor packaging, and milestones live in `[ARCHITECTURE.md](./ARCHITECTURE.md)`.  
+**Feature checklist:** Per-feature status, examples, and expected behavior → `[FEATURES.md](./FEATURES.md)`.
 
 This document is the full design of Thunk’s syntax, semantics, protocols, lowering, and runtime. Where architecture decisions are settled (editor stack, file extension, milestone order), see `ARCHITECTURE.md`; this file owns *what the language is*. For “is X implemented yet?” see `FEATURES.md`.
 
 ---
+
+
 
 ## 1. Goals
 
@@ -14,12 +16,12 @@ The language is a TypeScript-adjacent language built on top of the TypeScript co
 
 It is **not** a TypeScript superset. It has its own syntax and semantics, while intentionally preserving TypeScript’s familiar style:
 
-* imperative statements;
-* ordinary variables and mutation;
-* explicit `return`;
-* TypeScript-like types and generics;
-* ordinary functions and interfaces;
-* structural typing where appropriate.
+- imperative statements;
+- ordinary variables and mutation;
+- explicit `return`;
+- TypeScript-like types and generics;
+- ordinary functions and interfaces;
+- structural typing where appropriate.
 
 The language should provide powerful typed computation composition without requiring functional-programming style.
 
@@ -66,7 +68,11 @@ Errors, typed failure channels, cancellation, concurrency, and resource scopes a
 
 ---
 
+
+
 ## 2. Core Concepts
+
+
 
 ### 2.1 Thunks
 
@@ -151,9 +157,9 @@ Thunk<User>
 
 means:
 
-* the thunk returns `User`;
-* it requires `Database` and `Logger`;
-* it has the `Once` protocol.
+- the thunk returns `User`;
+- it requires `Database` and `Logger`;
+- it has the `Once` protocol.
 
 Protocols are not ordinary TypeScript intersections or unions.
 
@@ -189,7 +195,11 @@ However, this record representation is an implementation model, not necessarily 
 
 ---
 
+
+
 ## 3. Protocol Bags
+
+
 
 ### 3.1 Protocol entries
 
@@ -388,7 +398,11 @@ The exact names remain provisional (see §22.6).
 
 ---
 
+
+
 ## 4. Protocol Declarations
+
+
 
 ### 4.1 Protocol syntax
 
@@ -431,9 +445,9 @@ is a type-function declaration.
 
 It has:
 
-* a name;
-* generic type parameters;
-* a type-level result.
+- a name;
+- generic type parameters;
+- a type-level result.
 
 It has no runtime receiver and no runtime implementation.
 
@@ -478,10 +492,10 @@ Database | Logger
 
 It does not receive:
 
-* the thunk return type;
-* the complete thunk type;
-* unrelated protocol entries;
-* runtime values.
+- the thunk return type;
+- the complete thunk type;
+- unrelated protocol entries;
+- runtime values.
 
 The compiler manages the complete protocol bag and invokes each protocol independently.
 
@@ -612,14 +626,18 @@ protocol Requires<
 
 This means:
 
-* a successful pure value introduces no requirements;
-* deferring a computation preserves its requirements;
-* sequential composition unions requirements;
-* execution is invalid while requirements remain.
+- a successful pure value introduces no requirements;
+- deferring a computation preserves its requirements;
+- sequential composition unions requirements;
+- execution is invalid while requirements remain.
 
 ---
 
+
+
 ## 5. The Atomic Thunk Runtime
+
+
 
 ### 5.1 Semantic primitives
 
@@ -656,12 +674,12 @@ These operations are semantic primitives.
 
 The final runtime representation may use:
 
-* closures;
-* tagged nodes;
-* a state machine;
-* bytecode;
-* an interpreter;
-* generated JavaScript.
+- closures;
+- tagged nodes;
+- a state machine;
+- bytecode;
+- an interpreter;
+- generated JavaScript.
 
 The semantic behavior must remain equivalent.
 
@@ -803,7 +821,11 @@ which succeeds.
 
 ---
 
+
+
 ## 6. `thunk` Lowering
+
+
 
 ### 6.1 Basic thunk
 
@@ -1005,7 +1027,11 @@ Ordinary statements remain inside the generated continuation.
 
 ---
 
+
+
 ## 7. `run`
+
+
 
 ### 7.1 One-layer execution
 
@@ -1115,7 +1141,11 @@ Each `run` corresponds to one sequencing operation.
 
 ---
 
+
+
 ## 8. Pipe Syntax
+
+
 
 ### 8.1 Basic pipe
 
@@ -1215,7 +1245,11 @@ execute(
 
 ---
 
+
+
 ## 9. Protocol Inference
+
+
 
 ### 9.1 Protocol inference through lowering
 
@@ -1294,6 +1328,8 @@ Thunk<Result>
   )
 ```
 
+
+
 ### 9.2 Protocol inference is local
 
 Each protocol operates only on its own payload.
@@ -1365,7 +1401,11 @@ The identity is supplied by `succeed<>` (see §22.2).
 
 ---
 
+
+
 ## 10. The `Requires` Protocol
+
+
 
 ### 10.1 Symbols (branding + env tags)
 
@@ -1419,6 +1459,14 @@ const program: Thunk<string> = provide(
 ```
 
 See `examples/symbols.thunk` and `examples/requires.thunk`.
+
+Env APIs (`use` / `layerOf` / `provide`) are imported from `@thunk/runtime`:
+
+```ts
+import { use, provide, layerOf } from "@thunk/runtime"
+```
+
+The type `Thunk<T>` is auto-available (no import). Compiler helpers (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) come from `@thunk/runtime/internal` via the lowerer.
 
 ### 10.2 `Requires`
 
@@ -1489,7 +1537,11 @@ CompileError<
 
 ---
 
+
+
 ## 11. `use`
+
+
 
 ### 11.1 Type signature
 
@@ -1536,6 +1588,8 @@ Thunk<DatabaseService>
   Requires(Database)
 ```
 
+
+
 ### 11.2 Runtime behavior
 
 `use` creates a thunk operation that reads a service from the current runtime environment.
@@ -1571,7 +1625,11 @@ The compiler does not infer the requirement from the runtime implementation.
 
 ---
 
+
+
 ## 12. Layers
+
+
 
 ### 12.1 Layer type
 
@@ -1651,7 +1709,11 @@ The parent environment is unchanged.
 
 ---
 
+
+
 ## 13. `provide`
+
+
 
 ### 13.1 Type signature
 
@@ -1855,7 +1917,11 @@ The type behavior and runtime behavior correspond but are independently defined.
 
 ---
 
+
+
 ## 14. Protocol Type Manipulation
+
+
 
 ### 14.1 Why explicit protocol utilities are needed
 
@@ -1956,7 +2022,11 @@ The exact public API can remain provisional.
 
 ---
 
+
+
 ## 15. Protocol Bag Normalization
+
+
 
 ### 15.1 Repeated protocol entries
 
@@ -2013,6 +2083,8 @@ The normalized result is:
     A | B
 }
 ```
+
+
 
 ### 15.2 Protocol payloads that are themselves unions
 
@@ -2089,6 +2161,8 @@ The protocol declaration owns the meaning of payload composition.
 
 ---
 
+
+
 ## 16. Type-Level Higher-Order Functions
 
 The protocol type-function syntax is intended to support higher-order type programming.
@@ -2117,6 +2191,8 @@ This capability is not required for the first `Requires` implementation but shou
 The type-function system should not be limited to ordinary TypeScript aliases.
 
 ---
+
+
 
 ## 17. Compiler Architecture (language view)
 
@@ -2158,11 +2234,11 @@ TypeScript checker / emitter
 
 Reuse TypeScript where possible:
 
-* ordinary TypeScript syntax in bodies and annotations;
-* ordinary declarations and expressions (as `TsExpression` regions early on);
-* JavaScript emission;
-* module resolution;
-* editor infrastructure via virtual documents (Volar).
+- ordinary TypeScript syntax in bodies and annotations;
+- ordinary declarations and expressions (as `TsExpression` regions early on);
+- JavaScript emission;
+- module resolution;
+- editor infrastructure via virtual documents (Volar).
 
 The language-specific front-end handles:
 
@@ -2174,6 +2250,8 @@ postfix protocol syntax
 pipe syntax
 protocol type functions
 ```
+
+
 
 ### 17.2 Extended AST nodes
 
@@ -2215,11 +2293,11 @@ The first implementation may restrict complex control flow.
 
 Recommended initial restrictions:
 
-* `run` allowed only in statement positions;
-* no `run` inside arbitrary expressions;
-* no `run` inside loop conditions;
-* no `run` inside `finally`;
-* no `run` across unsupported control-flow boundaries.
+- `run` allowed only in statement positions;
+- no `run` inside arbitrary expressions;
+- no `run` inside loop conditions;
+- no `run` inside `finally`;
+- no `run` across unsupported control-flow boundaries.
 
 For example, initially supported:
 
@@ -2299,13 +2377,13 @@ The compiler should use ordinary JavaScript closure semantics initially.
 
 Define exact behavior before supporting:
 
-* loops containing `run`;
-* `break`;
-* `continue`;
-* `return` from nested functions;
-* `try/catch/finally`;
-* generators;
-* labeled statements.
+- loops containing `run`;
+- `break`;
+- `continue`;
+- `return` from nested functions;
+- `try/catch/finally`;
+- generators;
+- labeled statements.
 
 A robust implementation may eventually lower thunk bodies through a control-flow graph or state machine.
 
@@ -2313,7 +2391,11 @@ Prefer correct, readable `bind`/`defer` output over supporting every JavaScript 
 
 ---
 
+
+
 ## 18. Runtime Architecture
+
+
 
 ### 18.1 Runtime thunk representation
 
@@ -2446,6 +2528,8 @@ A later implementation may use an iterative continuation stack to avoid JavaScri
 
 ---
 
+
+
 ## 19. Compile-Time and Runtime Separation
 
 The language has two related but distinct systems.
@@ -2454,11 +2538,11 @@ The language has two related but distinct systems.
 
 The type system determines:
 
-* thunk return types;
-* protocol payloads;
-* protocol composition;
-* protocol validation;
-* explicit protocol transformations.
+- thunk return types;
+- protocol payloads;
+- protocol composition;
+- protocol validation;
+- explicit protocol transformations.
 
 Example:
 
@@ -2475,15 +2559,17 @@ evaluates to:
 Database | Logger
 ```
 
+
+
 ### 19.2 Runtime system
 
 The runtime determines:
 
-* actual thunk execution;
-* continuation sequencing;
-* environment lookup;
-* environment extension;
-* service implementations.
+- actual thunk execution;
+- continuation sequencing;
+- environment lookup;
+- environment extension;
+- service implementations.
 
 Example:
 
@@ -2531,17 +2617,21 @@ The function declares its type transformation explicitly.
 
 ---
 
+
+
 ## 20. Implementation roadmap (language features)
 
 Editor environment (Volar + extension + CLI emit) is **done** — see `ARCHITECTURE.md` §9 (M0–M1). Language features grow on that base:
 
-| Milestone | Language scope |
-|---|---|
+
+| Milestone     | Language scope                                                                        |
+| ------------- | ------------------------------------------------------------------------------------- |
 | **M0** (done) | `thunk { return … }`, `run` in statement position, single-`run` lowering, source maps |
-| **M1** (done) | Same subset; real editor + CLI (no new syntax) |
-| **M2** | Pipe + multi-`run` + correct `defer` placement (code before/between runs) |
-| **M3** | Protocol bag encoding + `Requires` + infer through `bind` + reject bad `execute` |
-| **M4** | `use` / `provide` / `Layer` (+ `Tag`) |
+| **M1** (done) | Same subset; real editor + CLI (no new syntax)                                        |
+| **M2**        | Pipe + multi-`run` + correct `defer` placement (code before/between runs)             |
+| **M3**        | Protocol bag encoding + `Requires` + infer through `bind` + reject bad `execute`      |
+| **M4**        | `use` / `provide` / `Layer` (+ `Tag`)                                                 |
+
 
 Full initial prototype target (through M4):
 
@@ -2555,11 +2645,15 @@ protocol Name<T> { ... }
 Thunk<T> Protocol(...)
 ```
 
+
+
 ### Atomic operations
 
 ```text
 succeed  defer  bind  execute
 ```
+
+
 
 ### Protocol support
 
@@ -2570,12 +2664,16 @@ protocol bag normalization
 protocol extraction / replacement / omission
 ```
 
+
+
 ### Built-in protocol and runtime
 
 ```text
 Requires
 Tag  Layer  use  provide
 ```
+
+
 
 ### Type utilities
 
@@ -2585,24 +2683,26 @@ Protocol<T>  Strip<T>  ReturnType<T>  Omit<P, Protocol>
 
 ---
 
+
+
 ## 21. Explicitly Deferred Features
 
 The following should not influence the initial core design:
 
-* typed error channels;
-* error handling semantics;
-* cancellation;
-* asynchronous execution;
-* concurrency;
-* parallel composition;
-* resource scopes;
-* ownership;
-* linear usage;
-* synchronization;
-* locking;
-* actor systems;
-* effect tracking beyond `Requires`;
-* advanced protocol interoperability.
+- typed error channels;
+- error handling semantics;
+- cancellation;
+- asynchronous execution;
+- concurrency;
+- parallel composition;
+- resource scopes;
+- ownership;
+- linear usage;
+- synchronization;
+- locking;
+- actor systems;
+- effect tracking beyond `Requires`;
+- advanced protocol interoperability.
 
 These may later be modeled as protocols or additional atomic operations.
 
@@ -2610,19 +2710,27 @@ They should not be added before thunk lowering, protocol inference, and the runt
 
 ---
 
+
+
 ## 22. Open Questions
+
+
 
 ### Resolved (see also `ARCHITECTURE.md` §10)
 
-| Topic | Decision |
-|---|---|
-| Protocol defaults (`succeed` / `defer`) | Inherited defaults |
-| Protocol identity | From `succeed<>` |
-| Partial protocol matching | Yes — extra protocols remain on `Th` |
-| Editor base | Virtual TypeScript + maps via Volar.js |
-| File extension | `.thunk` primary |
-| Type host | Stock TypeScript checker on lowered code |
-| Feature order | Editor environment before new syntax (M1 before M2+) |
+
+| Topic                                   | Decision                                             |
+| --------------------------------------- | ---------------------------------------------------- |
+| Protocol defaults (`succeed` / `defer`) | Inherited defaults                                   |
+| Protocol identity                       | From `succeed<>`                                     |
+| Partial protocol matching               | Yes — extra protocols remain on `Th`                 |
+| Editor base                             | Virtual TypeScript + maps via Volar.js               |
+| File extension                          | `.thunk` primary                                     |
+| Type host                               | Stock TypeScript checker on lowered code             |
+| Feature order                           | Editor environment before new syntax (M1 before M2+) |
+
+
+
 
 ### 22.1 Protocol defaults — resolved
 
@@ -2635,6 +2743,8 @@ succeed<>:
 defer<A>:
   A
 ```
+
+
 
 ### 22.2 Protocol identity — resolved
 
@@ -2701,6 +2811,8 @@ Final names and hover pretty-printing of postfix protocols vs raw encoding remai
 
 ---
 
+
+
 ## 23. Design Summary
 
 The language uses familiar TypeScript-like imperative syntax.
@@ -2763,9 +2875,9 @@ Protocols operate only on their own payloads.
 
 They do not see or modify:
 
-* thunk return types;
-* other protocol entries;
-* runtime values.
+- thunk return types;
+- other protocol entries;
+- runtime values.
 
 Ordinary thunk composition infers protocols through the lowered atomic operations.
 
@@ -2813,7 +2925,7 @@ function provide<
 
 At runtime:
 
-* `use` reads a tagged service from the current environment;
-* `provide` extends the environment with a layer for the duration of the inner thunk.
+- `use` reads a tagged service from the current environment;
+- `provide` extends the environment with a layer for the duration of the inner thunk.
 
 The first complete language slice should make these semantics precise, type-safe, and easy to lower into JavaScript—and visible in the editor—before expanding into additional protocols or broader effect-system features.

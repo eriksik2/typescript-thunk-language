@@ -2,6 +2,8 @@
  * Thunk AST.
  *
  * Supported:
+ *   import { … } from "…"
+ *   import type { … } from "…"
  *   const name [: Type Requires(...) Once] = thunk { ... }
  *   const name = run expr
  *   run expr
@@ -23,11 +25,36 @@ export interface SourceFile {
 }
 
 export type Statement =
+  | ImportDeclaration
   | VariableStatement
   | ReturnStatement
   | ExpressionStatement
   | ProtocolDeclaration
   | SymbolDeclaration;
+
+export interface ImportSpecifier {
+  /** Local binding name (after `as` if present). */
+  readonly local: string;
+  /** Imported name (before `as`), or same as local. */
+  readonly imported: string;
+  readonly isTypeOnly: boolean;
+  readonly range: Range;
+}
+
+/**
+ * `import { use, provide } from "@thunk/runtime"`
+ * `import type { Foo } from "…"`
+ */
+export interface ImportDeclaration {
+  readonly kind: "ImportDeclaration";
+  /** True for `import type { … }`. */
+  readonly isTypeOnly: boolean;
+  readonly specifiers: readonly ImportSpecifier[];
+  readonly module: string;
+  /** Full original statement text (for faithful emit). */
+  readonly text: string;
+  readonly range: Range;
+}
 
 /** Associated type of a `symbol` declaration. */
 export interface SymbolAssociatedType {

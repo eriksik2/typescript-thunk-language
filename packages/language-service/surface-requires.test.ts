@@ -21,8 +21,11 @@ const root = path.resolve(import.meta.dirname, "../..");
 const fileName = path.join(root, "examples/requires.thunk");
 const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
+const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `symbol Database {
+const source = `import { use, provide, layerOf } from "@thunk/runtime"
+
+symbol Database {
   name: string
 }
 
@@ -39,15 +42,20 @@ const program: Thunk<string> = provide(
 const result = run program
 `;
 
-function project() {
-  return createThunkProject({
+function projectOpts() {
+  return {
     files: { [fileName]: source },
-    runtimeImportPath: runtimePath,
+    internalImportPath: "@thunk/runtime/internal",
     moduleMap: {
       "@thunk/types": typesPath,
       "@thunk/runtime": runtimePath,
+      "@thunk/runtime/internal": internalPath,
     },
-  });
+  } as const;
+}
+
+function project() {
+  return createThunkProject(projectOpts());
 }
 
 function offsetOf(needle: string, occurrence = 0): number {
@@ -62,19 +70,28 @@ function offsetOf(needle: string, occurrence = 0): number {
 }
 
 describe("surface: requires.thunk", () => {
+  test("lower emits internal helpers + preserves user import", () => {
+    const lowered = lowerThunkSource(source, fileName);
+    expect(lowered.generatedText).toContain(
+      'import { use, provide, layerOf } from "@thunk/runtime"',
+    );
+    expect(lowered.generatedText).toContain(
+      'from "@thunk/runtime/internal"',
+    );
+    expect(lowered.generatedText).toContain("__makeSymbol");
+    expect(lowered.generatedText).not.toMatch(
+      /import \{[^}]*\buse\b[^}]*\} from "@thunk\/runtime\/internal"/,
+    );
+  });
+
   test("Database identifier maps to generated Database (not mid-cast)", () => {
-    const lowered = lowerThunkSource(source, fileName, {
-      runtimeImportPath: runtimePath,
-    });
+    const lowered = lowerThunkSource(source, fileName);
     const nameOffset = offsetOf("symbol Database") + "symbol ".length;
     for (let i = 0; i < "Database".length; i++) {
       const pos = offsetToPosition(source, nameOffset + i);
       const gen = originalToGenerated(lowered.sourceMap, pos);
       expect(gen).toBeDefined();
       const genOff = positionToOffset(lowered.generatedText, gen!);
-      // Must land inside an identifier token "Database"
-      const slice = lowered.generatedText.slice(genOff, genOff + "Database".length);
-      // Either at start of Database or inside it — surrounding word must be Database
       let start = genOff;
       while (
         start > 0 &&
@@ -90,8 +107,28 @@ describe("surface: requires.thunk", () => {
         end++;
       }
       expect(lowered.generatedText.slice(start, end)).toBe("Database");
-      void slice;
     }
+  });
+
+  test("use without import → cannot find name", () => {
+    const noImport = `symbol Database {
+  name: string
+}
+const fetchUser = thunk {
+  const db = run use(Database)
+  return db.name
+}
+`;
+    const p = createThunkProject({
+      files: { [fileName]: noImport },
+      moduleMap: {
+        "@thunk/types": typesPath,
+        "@thunk/runtime": runtimePath,
+        "@thunk/runtime/internal": internalPath,
+      },
+    });
+    const diags = p.getDiagnostics(fileName).join("\n");
+    expect(diags).toMatch(/Cannot find name 'use'/);
   });
 
   test("hover Database → surface symbol, no encoding noise", () => {
@@ -121,7 +158,7 @@ describe("surface: requires.thunk", () => {
     expect(d).not.toMatch(/__brand_/);
   });
 
-  test("hover program → pure Thunk<string>", () => {
+  test("hover program → pure Thunk<string> (Thunk auto-available)", () => {
     const p = project();
     const offset = offsetOf("const program") + "const ".length;
     const hover = hoverAtOffset(p, fileName, source, offset);

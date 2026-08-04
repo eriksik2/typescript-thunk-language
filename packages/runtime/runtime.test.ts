@@ -2,7 +2,7 @@
  * Runtime API type + behavior tests.
  */
 import { describe, expect, test } from "bun:test";
-import { bind, defer, execute, succeed } from "./src/index";
+import { bind, defer, execute, succeed } from "./src/internal";
 import type {
   CompileError,
   ExecuteResult,

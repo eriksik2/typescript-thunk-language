@@ -819,14 +819,19 @@ const db = run use(Database)
 **What it should look like.**
 
 ```ts
+import { use, provide, layerOf } from "@thunk/runtime"
+
 function use<S extends ThunkSymbol<any>>(sym: S): Thunk<SymbolType<S>> Requires(S)
 ```
+
+Authors must import value APIs from `@thunk/runtime`. The type `Thunk<T>` is auto-available (lowerer injects it).
 
 **Cases**
 
 | Example | Expected |
 |---|---|
 | `use(Database)` | Thunk that reads env; type introduces `Requires(Database)` |
+| Missing import | TS cannot find name `use` |
 | Requirement | Declared on signature — not inferred from runtime body |
 
 ---

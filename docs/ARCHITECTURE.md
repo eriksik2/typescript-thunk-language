@@ -157,6 +157,8 @@ Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires
 
 **Hover pretty-print:** must tolerate TypeScript-expanded `typeof` identities (callables with `=>`) inside Requires bags — `findThunkTypeSpan` is paren/brace aware and skips `=>`. Surface integration tests live under `packages/language-service/surface-*.test.ts` (`bun run proof:requires`).
 
+**Imports:** authors explicitly `import { use, provide, layerOf, … } from "@thunk/runtime"`. The lowerer injects only `@thunk/runtime/internal` (`succeed` / `defer` / `bind` / `execute` / `__makeSymbol`) plus auto `import type { Thunk, Requires? } from "@thunk/types"`. `Thunk<T>` needs no author import.
+
 ---
 
 ## 6. Runtime vs types
@@ -165,8 +167,9 @@ Keep the design doc’s separation:
 
 | Layer | Owns |
 |---|---|
-| Type / protocol system | Return types, protocol payloads, composition, `execute` validation, `provide` transforms |
-| Runtime | `succeed` / `defer` / `bind` / `execute`, environment, `use`, `provide` |
+| Type / protocol system | Return types, protocol payloads, composition, `execute` validation, `provide` transforms (`@thunk/types`; `Thunk` auto-injected) |
+| Public runtime | Author values: `use` / `provide` / `layerOf` / `mergeLayers` (`@thunk/runtime`) |
+| Internal runtime | Lowerer glue: `succeed` / `defer` / `bind` / `execute` / `__makeSymbol` (`@thunk/runtime/internal`) |
 
 Function signatures declare protocol transforms explicitly. The compiler does not infer protocol changes by inspecting runtime bodies.
 
@@ -178,7 +181,7 @@ Initial runtime representation: tagged nodes (`succeed` | `defer` | `bind` | `us
 
 ### 7.1 Chosen: hybrid front-end
 
-1. **Language-specific parser** for: `thunk`, `run`, `symbol`, `|` pipe, `protocol` declarations, postfix protocol type syntax.
+1. **Language-specific parser** for: `import`, `thunk`, `run`, `symbol`, `|` pipe, `protocol` declarations, postfix protocol type syntax.
 2. **TypeScript compiler API** for ordinary expressions, statements (where allowed), type annotations, and modules once those regions are ordinary TS or after local desugaring.
 3. **Thunk-body lowering** operates on a statement-oriented AST so continuations preserve lexical scope.
 

@@ -1,14 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Thunk CLI — emit lowered TypeScript via language-core.
+ * Thunk CLI — emit lowered TypeScript / run via Bun.
  *
- * Usage: thunk build <file> [--out <path>]
+ * Usage:
+ *   thunk build <file> [--out <path>]
+ *   thunk run <file.thunk>
  */
 
+import { spawn } from "node:child_process";
+import path from "node:path";
 import { compileThunkSource } from "./index";
 
 function usage(): never {
-  console.error("Usage: thunk build <file> [--out <path>]");
+  console.error(`Usage:
+  thunk build <file> [--out <path>]
+  thunk run <file.thunk>`);
   process.exit(1);
 }
 
@@ -20,15 +26,12 @@ function defaultOutPath(inputPath: string): string {
   return `${inputPath}.ts`;
 }
 
-function parseArgs(argv: string[]): { inputPath: string; outPath: string } {
-  if (argv[0] !== "build" || !argv[1]) {
-    usage();
-  }
-
-  const inputPath = argv[1]!;
+async function build(argv: string[]): Promise<void> {
+  if (!argv[0]) usage();
+  const inputPath = argv[0]!;
   let outPath: string | undefined;
 
-  for (let i = 2; i < argv.length; i++) {
+  for (let i = 1; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "--out") {
       const value = argv[++i];
@@ -39,20 +42,48 @@ function parseArgs(argv: string[]): { inputPath: string; outPath: string } {
     }
   }
 
-  return { inputPath, outPath: outPath ?? defaultOutPath(inputPath) };
+  const resolvedOut = outPath ?? defaultOutPath(inputPath);
+  const text = await Bun.file(inputPath).text();
+  const { generatedText } = compileThunkSource(text, inputPath);
+  await Bun.write(resolvedOut, generatedText);
+  console.log(resolvedOut);
 }
 
-async function main(): Promise<void> {
-  const { inputPath, outPath } = parseArgs(process.argv.slice(2));
+async function run(argv: string[]): Promise<void> {
+  if (!argv[0] || argv.length > 1) usage();
+  const inputPath = path.resolve(argv[0]!);
+  const outPath = defaultOutPath(inputPath);
 
   try {
     const text = await Bun.file(inputPath).text();
     const { generatedText } = compileThunkSource(text, inputPath);
     await Bun.write(outPath, generatedText);
-    console.log(outPath);
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
+  }
+
+  const child = spawn("bun", [outPath], {
+    stdio: "inherit",
+    cwd: path.dirname(outPath),
+  });
+
+  const code: number = await new Promise((resolve) => {
+    child.on("close", (exitCode) => resolve(exitCode ?? 1));
+    child.on("error", () => resolve(1));
+  });
+  process.exit(code);
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  const cmd = argv[0];
+  if (cmd === "build") {
+    await build(argv.slice(1));
+  } else if (cmd === "run") {
+    await run(argv.slice(1));
+  } else {
+    usage();
   }
 }
 

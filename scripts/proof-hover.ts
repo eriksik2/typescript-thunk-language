@@ -16,6 +16,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const fileName = path.join(root, "examples/basic.thunk");
 const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
+const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
 const source = `const random = thunk {
   return Math.random()
@@ -27,19 +28,17 @@ const program = thunk {
 }
 `;
 
-const lowered = lowerThunkSource(source, fileName, {
-  runtimeImportPath: runtimePath,
-});
+const lowered = lowerThunkSource(source, fileName);
 
 console.log("=== Lowered TypeScript ===\n");
 console.log(lowered.generatedText);
 
 const project = createThunkProject({
   files: { [fileName]: source },
-  runtimeImportPath: runtimePath,
   moduleMap: {
     "@thunk/types": typesPath,
     "@thunk/runtime": runtimePath,
+    "@thunk/runtime/internal": internalPath,
   },
 });
 

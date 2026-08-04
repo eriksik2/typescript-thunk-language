@@ -77,7 +77,7 @@ export class ThunkVirtualCode implements VirtualCode {
 
     try {
       const lowered = lowerThunkSource(text, this.fileName, {
-        runtimeImportPath: "@thunk/runtime",
+        internalImportPath: "@thunk/runtime/internal",
       });
       this.lowered = lowered;
       this.embeddedCodes = [createEmbeddedTs(lowered)];

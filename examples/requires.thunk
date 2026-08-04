@@ -1,8 +1,14 @@
 // Example: Requires + use / provide via first-class symbol
 
+import { use, provide, layerOf } from "@thunk/runtime"
+
 symbol Database {
   name: string
 }
+
+const DatabaseLive = Database({
+  name: "live"
+})
 
 const fetchUser = thunk {
   const db = run use(Database)
@@ -11,7 +17,9 @@ const fetchUser = thunk {
 
 const program: Thunk<string> = provide(
   fetchUser,
-  layerOf(Database, { name: "ada" }),
+  //layerOf(Database, DatabaseLive),
+  DatabaseLive,
 )
 
 const result = run program
+console.log(result)

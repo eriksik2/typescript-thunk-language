@@ -83,6 +83,43 @@ const fetchUser = thunk {
     expect(lowered.generatedText).toContain("type Database =");
   });
 
+  test("parses and lowers import declarations", () => {
+    const source = `import { use, provide, layerOf } from "@thunk/runtime"
+const x = use
+`;
+    const ast = parseThunkSource(source);
+    expect(ast.statements[0]?.kind).toBe("ImportDeclaration");
+    const imp = ast.statements[0] as {
+      module: string;
+      specifiers: { local: string }[];
+    };
+    expect(imp.module).toBe("@thunk/runtime");
+    expect(imp.specifiers.map((s) => s.local)).toEqual([
+      "use",
+      "provide",
+      "layerOf",
+    ]);
+    const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain(
+      'import { use, provide, layerOf } from "@thunk/runtime"',
+    );
+    expect(lowered.generatedText).toContain("@thunk/runtime/internal");
+    expect(lowered.generatedText).not.toContain(
+      'use, provide, layerOf } from "@thunk/runtime/internal"',
+    );
+  });
+
+  test("auto-injects Thunk type without author import", () => {
+    const lowered = lowerThunkSource(`const program: Thunk<number> = thunk {
+  return 1
+}
+`);
+    expect(lowered.generatedText).toContain(
+      'import type { Thunk } from "@thunk/types"',
+    );
+    expect(lowered.generatedText).toContain("@thunk/runtime/internal");
+  });
+
   test("symbol name mappings land on generated Database identifier", () => {
     const source = `symbol Database {
   name: string

@@ -8,6 +8,8 @@
 import type {
   Expression,
   Identifier,
+  ImportDeclaration,
+  ImportSpecifier,
   ProtocolClause,
   ProtocolDeclaration,
   ProtocolTypeFunction,
@@ -54,6 +56,10 @@ class Parser {
 
   private parseStatement(): Statement {
     const start = this.pos;
+
+    if (this.peekKeyword("import")) {
+      return this.parseImportDeclaration(start);
+    }
 
     if (this.peekKeyword("protocol")) {
       return this.parseProtocolDeclaration(start);
@@ -109,6 +115,88 @@ class Parser {
       range: this.range(start, this.pos),
       expression,
     };
+  }
+
+  /**
+   * `import { a, type B as C } from "mod"`
+   * `import type { A } from "mod"`
+   */
+  private parseImportDeclaration(start: number): ImportDeclaration {
+    this.matchKeyword("import");
+    this.skipTrivia();
+    let isTypeOnly = false;
+    if (this.peekKeyword("type")) {
+      // Distinguish `import type {` from `import type` as a binding — only
+      // `import type {` is type-only clause.
+      const save = this.pos;
+      this.matchKeyword("type");
+      this.skipTrivia();
+      if (this.peek() === "{") {
+        isTypeOnly = true;
+      } else {
+        this.pos = save;
+      }
+    }
+    this.expect("{");
+    this.skipTrivia();
+    const specifiers: ImportSpecifier[] = [];
+    while (!this.eof() && this.peek() !== "}") {
+      const specStart = this.pos;
+      let specTypeOnly = false;
+      if (this.peekKeyword("type")) {
+        this.matchKeyword("type");
+        this.skipTrivia();
+        specTypeOnly = true;
+      }
+      const imported = this.parseIdentifier();
+      this.skipTrivia();
+      let local = imported.name;
+      if (this.peekKeyword("as")) {
+        this.matchKeyword("as");
+        this.skipTrivia();
+        local = this.parseIdentifier().name;
+        this.skipTrivia();
+      }
+      specifiers.push({
+        imported: imported.name,
+        local,
+        isTypeOnly: isTypeOnly || specTypeOnly,
+        range: this.range(specStart, this.pos),
+      });
+      if (this.peek() === ",") {
+        this.pos++;
+        this.skipTrivia();
+      }
+    }
+    this.expect("}");
+    this.skipTrivia();
+    if (!this.matchKeyword("from")) {
+      throw new ParseError("expected 'from'", this.pos);
+    }
+    this.skipTrivia();
+    const module = this.parseStringLiteral();
+    this.expectSemiOrNewline();
+    const end = this.pos;
+    return {
+      kind: "ImportDeclaration",
+      isTypeOnly,
+      specifiers,
+      module,
+      text: this.text.slice(start, end).trimEnd(),
+      range: this.range(start, end),
+    };
+  }
+
+  private parseStringLiteral(): string {
+    this.skipTrivia();
+    const q = this.peek();
+    if (q !== '"' && q !== "'") {
+      throw new ParseError("expected string literal", this.pos);
+    }
+    const start = this.pos;
+    this.consumeString(q);
+    const raw = this.text.slice(start, this.pos);
+    return raw.slice(1, -1);
   }
 
   /**

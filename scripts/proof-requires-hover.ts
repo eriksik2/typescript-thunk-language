@@ -15,8 +15,11 @@ const root = path.resolve(import.meta.dirname, "..");
 const fileName = path.join(root, "examples/requires.thunk");
 const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
+const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `symbol Database {
+const source = `import { use, provide, layerOf } from "@thunk/runtime"
+
+symbol Database {
   name: string
 }
 
@@ -35,10 +38,10 @@ const result = run program
 
 const project = createThunkProject({
   files: { [fileName]: source },
-  runtimeImportPath: runtimePath,
   moduleMap: {
     "@thunk/types": typesPath,
     "@thunk/runtime": runtimePath,
+    "@thunk/runtime/internal": internalPath,
   },
 });
 

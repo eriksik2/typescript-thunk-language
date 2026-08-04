@@ -4,6 +4,7 @@
 
 import type {
   Expression,
+  ImportDeclaration,
   ProtocolDeclaration,
   SourceFile,
   Statement,
@@ -24,7 +25,11 @@ export interface LoweredFile {
 }
 
 export interface LowerOptions {
+  /** @deprecated Public APIs are no longer auto-imported. */
   runtimeImportPath?: string;
+  /** Compiler helpers (`succeed` / `defer` / …). Default `@thunk/runtime/internal`. */
+  internalImportPath?: string;
+  /** Auto-injected `Thunk` / `Requires`. Default `@thunk/types`. */
   typesImportPath?: string;
 }
 
@@ -33,43 +38,50 @@ class Emitter {
   private mappings: Mapping[] = [];
   private line = 0;
   private character = 0;
-  private needsTypesImport = false;
+  private needsThunkType = false;
+  private needsRequiresType = false;
   private needsMakeSymbol = false;
 
   constructor(
     private readonly originalText: string,
-    private readonly runtimeImportPath: string,
+    private readonly internalImportPath: string,
     private readonly typesImportPath: string,
   ) {}
 
   emitFile(ast: SourceFile): LoweredFile {
-    this.needsTypesImport = fileNeedsTypesImport(ast);
+    const typesNeeded = fileNeedsTypesImport(ast);
+    this.needsThunkType = typesNeeded.thunk;
+    this.needsRequiresType = typesNeeded.requires;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
 
-    const runtimeNames = [
-      "succeed",
-      "defer",
-      "bind",
-      "execute",
-      "use",
-      "provide",
-      "layerOf",
-      "mergeLayers",
-    ];
+    const imports = ast.statements.filter(
+      (s): s is ImportDeclaration => s.kind === "ImportDeclaration",
+    );
+    const rest = ast.statements.filter((s) => s.kind !== "ImportDeclaration");
+
+    for (const imp of imports) {
+      this.emitImportDeclaration(imp);
+    }
+
+    const internalNames = ["succeed", "defer", "bind", "execute"];
     if (this.needsMakeSymbol) {
-      runtimeNames.push("__makeSymbol");
+      internalNames.push("__makeSymbol");
     }
     this.write(
-      `import { ${runtimeNames.join(", ")} } from "${this.runtimeImportPath}";\n`,
+      `import { ${internalNames.join(", ")} } from "${this.internalImportPath}";\n`,
     );
-    if (this.needsTypesImport) {
+
+    if (this.needsThunkType || this.needsRequiresType) {
+      const typeNames: string[] = [];
+      if (this.needsThunkType) typeNames.push("Thunk");
+      if (this.needsRequiresType) typeNames.push("Requires");
       this.write(
-        `import type { Thunk, Requires } from "${this.typesImportPath}";\n`,
+        `import type { ${typeNames.join(", ")} } from "${this.typesImportPath}";\n`,
       );
     }
     this.write("\n");
 
-    for (const stmt of ast.statements) {
+    for (const stmt of rest) {
       this.emitTopLevelStatement(stmt);
     }
 
@@ -81,8 +93,17 @@ class Emitter {
     };
   }
 
+  private emitImportDeclaration(decl: ImportDeclaration): void {
+    this.writeMapped(decl.text, decl.range);
+    if (!decl.text.endsWith(";")) this.write(";");
+    this.write("\n");
+  }
+
   private emitTopLevelStatement(stmt: Statement): void {
     switch (stmt.kind) {
+      case "ImportDeclaration":
+        this.emitImportDeclaration(stmt);
+        return;
       case "VariableStatement":
         this.emitVariableStatement(stmt);
         return;
@@ -319,6 +340,8 @@ class Emitter {
         throw new Error("protocol declarations are only valid at top level");
       case "SymbolDeclaration":
         throw new Error("symbol declarations are only valid at top level");
+      case "ImportDeclaration":
+        throw new Error("import declarations are only valid at top level");
     }
   }
 
@@ -379,32 +402,50 @@ function fileHasSymbolDecls(ast: SourceFile): boolean {
   return ast.statements.some((s) => s.kind === "SymbolDeclaration");
 }
 
-function fileNeedsTypesImport(ast: SourceFile): boolean {
+function fileNeedsTypesImport(ast: SourceFile): {
+  thunk: boolean;
+  requires: boolean;
+} {
+  let thunk = false;
+  let requires = false;
   for (const stmt of ast.statements) {
-    if (stmt.kind === "ProtocolDeclaration") return true;
+    if (stmt.kind === "ProtocolDeclaration") {
+      // Protocol decls may reference types; keep Thunk available if annotated elsewhere.
+      continue;
+    }
     if (stmt.kind === "VariableStatement" && stmt.typeAnnotation) {
       const { needsTypesImport } = encodeThunkTypeAnnotation(
         stmt.typeAnnotation.baseText,
         stmt.typeAnnotation.protocols,
       );
-      if (needsTypesImport || stmt.typeAnnotation.protocols.length > 0) {
-        return true;
+      if (stmt.typeAnnotation.protocols.some((p) => p.name === "Requires")) {
+        requires = true;
+        thunk = true;
       }
-      if (/Thunk\s*</.test(stmt.typeAnnotation.baseText)) return true;
+      if (needsTypesImport || /Thunk\s*</.test(stmt.typeAnnotation.baseText)) {
+        thunk = true;
+      }
+      if (stmt.typeAnnotation.protocols.length > 0) {
+        thunk = true;
+        if (stmt.typeAnnotation.protocols.some((p) => p.name === "Requires")) {
+          requires = true;
+        }
+      }
     }
   }
-  return false;
+  return { thunk, requires };
 }
 
 export function lowerSourceFile(
   ast: SourceFile,
   options?: LowerOptions,
 ): LoweredFile {
-  const runtimeImportPath = options?.runtimeImportPath ?? "@thunk/runtime";
+  const internalImportPath =
+    options?.internalImportPath ?? "@thunk/runtime/internal";
   const typesImportPath = options?.typesImportPath ?? "@thunk/types";
   return new Emitter(
     ast.text,
-    runtimeImportPath,
+    internalImportPath,
     typesImportPath,
   ).emitFile(ast);
 }
