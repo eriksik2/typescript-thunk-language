@@ -1,9 +1,9 @@
 # dependencies (bun install)
 node_modules
 
-# output
-out
-dist
+# output (root build artifacts only — keep examples/out committed)
+/out
+/dist
 *.tgz
 
 # code coverage
