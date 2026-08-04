@@ -17,6 +17,8 @@ export {
   type Layer,
 } from "./internal";
 
+export { wrap } from "./wrap";
+
 export {
   Failure,
   Defect,
@@ -42,6 +44,9 @@ export type {
   SymbolOfValue,
   IdentityCarrier,
   WithRequires,
+  WithAsync,
   ProvideRequires,
   Requires,
+  Async,
+  HasAsync,
 } from "@thunk/types";

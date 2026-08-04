@@ -2708,7 +2708,7 @@ The following should not influence the initial core design:
 - typed error channels;
 - error handling semantics;
 - cancellation;
-- asynchronous execution;
+- asynchronous execution (`Async` + `wrap` shipped as MVP; concurrency still deferred);
 - concurrency;
 - parallel composition;
 - resource scopes;

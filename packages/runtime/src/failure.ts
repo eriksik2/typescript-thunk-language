@@ -10,7 +10,7 @@
  *
  * - `Failure` — abstract root; `Symbol.is(x, Failure)` works; cannot brand.
  * - `Defect` — corrupted / should-never-happen (e.g. naked throws in thunks).
- * - `UnhandledError` — external failure not yet handled (e.g. future `wrap`).
+ * - `UnhandledError` — external failure not yet handled (e.g. `wrap` rejection).
  * - `Error` — ordinary tagged application error (handleable later).
  *
  * Import from `@thunk/runtime`. The `Error` export shadows global `Error` when

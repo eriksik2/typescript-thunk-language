@@ -7,17 +7,20 @@ import type {
   EmptyProtocols,
   ExecuteResult,
   GetRequires,
+  HasAsync,
   IdentityCarrier,
   MergeProtocols,
   Protocol,
   ProtocolBag,
   ProvideRequires,
   Requires,
+  Async,
   SymbolOfValue,
   SymbolType,
   Thunk,
   ThunkReturnType,
   ThunkSymbol,
+  WithAsync,
   WithRequires,
 } from "@thunk/types";
 
@@ -30,7 +33,8 @@ type ThunkNode<T> =
   | RunEffectNode<unknown>
   | MachineNode<T>
   | UseNode<T>
-  | ProvideNode<T>;
+  | ProvideNode<T>
+  | AwaitPromiseNode<T>;
 
 interface SucceedNode<T> {
   readonly kind: "succeed";
@@ -72,6 +76,14 @@ interface ProvideNode<T> {
   readonly kind: "provide";
   readonly inner: ThunkNode<T>;
   readonly layer: Layer<any>;
+}
+
+/** Promise bridge — introduced by `wrap`. */
+interface AwaitPromiseNode<T> {
+  readonly kind: "awaitPromise";
+  readonly factory: () => Promise<T>;
+  /** Throws (typically `UnhandledError`) — typed as `never`. */
+  readonly onReject: (reason: unknown) => never;
 }
 
 function asThunk<T, P extends ProtocolBag = EmptyProtocols>(
@@ -303,14 +315,16 @@ type ProtocolsOfStep<R> =
 
 /**
  * Collapse a union of protocol bags (from machine step return paths).
- * Emit a structural `{ readonly [Requires]: … }` bag (same shape as
- * `MergeProtocols`) so hover pretty-printing recognizes `Requires(…)`.
+ * Keep `Requires` (union) and `Async` if any path carries it.
  */
-type CollapseProtocolUnion<P extends ProtocolBag> = [GetRequires<P>] extends [
-  never,
-]
-  ? EmptyProtocols
-  : { readonly [Requires]: GetRequires<P> };
+type CollapseProtocolUnion<P extends ProtocolBag> = SimplifyEmptyBag<
+  ([GetRequires<P>] extends [never]
+    ? EmptyProtocols
+    : { readonly [Requires]: GetRequires<P> }) &
+    (HasAsync<P> extends true ? { readonly [Async]: void } : EmptyProtocols)
+>;
+
+type SimplifyEmptyBag<P> = keyof P extends never ? EmptyProtocols : P;
 
 /**
  * Suspend the current state machine: execute `source`, then resume `step`
@@ -335,6 +349,20 @@ export function machine<R extends StepResult>(
   return asThunk({
     kind: "machine",
     step: (resume) => asNode(step(resume) as unknown as Thunk<any, any>),
+  });
+}
+
+/**
+ * Internal: Promise → thunk node with `Async`. Used by author-facing `wrap`.
+ */
+export function __awaitPromise<T>(
+  factory: () => Promise<T>,
+  onReject: (reason: unknown) => never,
+): Thunk<T, WithAsync> {
+  return asThunk({
+    kind: "awaitPromise",
+    factory,
+    onReject,
   });
 }
 
@@ -421,8 +449,10 @@ function isLayer(value: unknown): value is Layer<any> {
 }
 
 /**
- * Run a thunk to a value.
- * Type-level: fails with `CompileError` when `Requires` remain.
+ * Run a thunk to completion.
+ * Type-level: `CompileError` when `Requires` remain; `Promise<T>` when `Async`.
+ * Runtime: returns `T` synchronously when no Promise suspension occurs;
+ * returns a `Promise` once an `awaitPromise` / thenable path is taken.
  */
 export function execute<T, P extends ProtocolBag>(
   thunk: Thunk<T, P>,
@@ -431,7 +461,18 @@ export function execute<T, P extends ProtocolBag>(
   return executeNode(asNode(thunk), env) as ExecuteResult<T, P>;
 }
 
-function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === "function"
+  );
+}
+
+function executeNode<T>(
+  thunk: ThunkNode<T>,
+  env: Environment,
+): T | Promise<T> {
   let current: ThunkNode<any> = thunk;
   for (;;) {
     switch (current.kind) {
@@ -440,8 +481,27 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
       case "defer":
         current = current.factory();
         continue;
+      case "awaitPromise": {
+        const { factory, onReject } = current;
+        let promise: Promise<any>;
+        try {
+          promise = factory();
+        } catch (err) {
+          onReject(err);
+        }
+        return promise.then(
+          (value) => value as T,
+          (reason) => onReject(reason),
+        );
+      }
       case "bind": {
         const value = executeNode(current.source, env);
+        if (isThenable(value)) {
+          const cont = current.continuation;
+          return Promise.resolve(value).then((v) =>
+            executeNode(cont(v), env),
+          ) as Promise<T>;
+        }
         current = current.continuation(value);
         continue;
       }
@@ -449,24 +509,8 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
         throw new Error(
           "runEffect is only valid inside a machine step (suspend)",
         );
-      case "machine": {
-        let resume: unknown = undefined;
-        for (;;) {
-          let next: ThunkNode<any> = current.step(resume);
-          while (next.kind === "defer") {
-            next = next.factory();
-          }
-          if (next.kind === "succeed") {
-            return next.value as T;
-          }
-          if (next.kind === "runEffect") {
-            resume = executeNode(next.source, env);
-            continue;
-          }
-          // Nested machine / bind / use / provide — run to completion.
-          return executeNode(next, env) as T;
-        }
-      }
+      case "machine":
+        return runMachine(current, env);
       case "use": {
         if (!env.has(current.sym.key)) {
           throw new Error(
@@ -488,6 +532,35 @@ function executeNode<T>(thunk: ThunkNode<T>, env: Environment): T {
   }
 }
 
+function runMachine<T>(
+  machineNode: MachineNode<T>,
+  env: Environment,
+  resume: unknown = undefined,
+): T | Promise<T> {
+  let currentResume = resume;
+  for (;;) {
+    let next: ThunkNode<any> = machineNode.step(currentResume);
+    while (next.kind === "defer") {
+      next = next.factory();
+    }
+    if (next.kind === "succeed") {
+      return next.value as T;
+    }
+    if (next.kind === "runEffect") {
+      const value = executeNode(next.source, env);
+      if (isThenable(value)) {
+        return Promise.resolve(value).then((v) =>
+          runMachine(machineNode, env, v),
+        );
+      }
+      currentResume = value;
+      continue;
+    }
+    // Nested machine / bind / use / provide / awaitPromise — run to completion.
+    return executeNode(next, env) as T | Promise<T>;
+  }
+}
+
 export type {
   Thunk,
   EmptyProtocols,
@@ -499,9 +572,12 @@ export type {
   SymbolOfValue,
   IdentityCarrier,
   WithRequires,
+  WithAsync,
   ProvideRequires,
   ThunkReturnType,
   Protocol,
+  HasAsync,
+  Async,
 };
 
 export type { Suspend };

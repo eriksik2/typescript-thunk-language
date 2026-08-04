@@ -2,6 +2,7 @@
 
 | Page | Section |
 |---|---|
+| [Async](./types/async.md) | types |
 | [Bindings](./core/bindings.md) | core |
 | [Control flow](./core/control-flow.md) | core |
 | [Branding](./symbols/branding.md) | symbols |
@@ -21,3 +22,4 @@
 | [Thunk blocks](./core/thunk-blocks.md) | core |
 | [Thunk type](./types/thunk-type.md) | types |
 | [use](./environment/use.md) | environment |
+| [wrap](./core/wrap.md) | core |

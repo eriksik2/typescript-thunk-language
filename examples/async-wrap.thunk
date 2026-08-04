@@ -1,0 +1,28 @@
+/**
+ * Async: wrap Promise → Thunk with Async protocol.
+ *
+ * Run:  bun run thunk run examples/async-wrap.thunk
+ */
+
+import { wrap } from "@thunk/runtime"
+
+function promiseFn(): Promise<boolean> {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(Math.random() > 0.5), 10)
+  })
+}
+
+const program = thunk {
+  let tries = 0
+  while (true) {
+    const res = run wrap(() => promiseFn())
+    if (res) return tries
+    tries++
+    if (tries > 20) return tries
+  }
+}
+
+const result = run program
+result.then((tries) => {
+  console.log({ tries })
+})

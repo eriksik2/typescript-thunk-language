@@ -380,6 +380,7 @@ class Emitter {
   private character = 0;
   private needsThunkType = false;
   private needsRequiresType = false;
+  private needsAsyncType = false;
   private needsMakeSymbol = false;
   private needsThunkReturnType = false;
   private needsSymbolType = false;
@@ -398,6 +399,7 @@ class Emitter {
     const typesNeeded = fileNeedsTypesImport(ast);
     this.needsThunkType = typesNeeded.thunk;
     this.needsRequiresType = typesNeeded.requires;
+    this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
     this.collectSymbolDecls(ast);
@@ -428,12 +430,14 @@ class Emitter {
     if (
       this.needsThunkType ||
       this.needsRequiresType ||
+      this.needsAsyncType ||
       this.needsThunkReturnType ||
       this.needsSymbolType
     ) {
       const typeNames: string[] = [];
       if (this.needsThunkType) typeNames.push("Thunk");
       if (this.needsRequiresType) typeNames.push("Requires");
+      if (this.needsAsyncType) typeNames.push("Async");
       if (this.needsThunkReturnType) typeNames.push("ThunkReturnType");
       if (this.needsSymbolType) typeNames.push("SymbolType");
       this.write(
@@ -1109,12 +1113,14 @@ function exprHasRun(expr: Expression): boolean {
 function fileNeedsTypesImport(ast: SourceFile): {
   thunk: boolean;
   requires: boolean;
+  async: boolean;
 } {
   let thunk = false;
   let requires = false;
+  let async = false;
   for (const stmt of ast.statements) {
     if (stmt.kind === "VariableStatement" && stmt.typeAnnotation) {
-      const { needsTypesImport } = encodeThunkTypeAnnotation(
+      const { needsTypesImport, needsAsyncImport } = encodeThunkTypeAnnotation(
         stmt.typeAnnotation.baseText,
         stmt.typeAnnotation.protocols,
       );
@@ -1122,6 +1128,11 @@ function fileNeedsTypesImport(ast: SourceFile): {
         requires = true;
         thunk = true;
       }
+      if (stmt.typeAnnotation.protocols.some((p) => p.name === "Async")) {
+        async = true;
+        thunk = true;
+      }
+      if (needsAsyncImport) async = true;
       if (needsTypesImport || /Thunk\s*</.test(stmt.typeAnnotation.baseText)) {
         thunk = true;
       }
@@ -1133,7 +1144,7 @@ function fileNeedsTypesImport(ast: SourceFile): {
       }
     }
   }
-  return { thunk, requires };
+  return { thunk, requires, async };
 }
 
 export function lowerSourceFile(

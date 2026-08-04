@@ -39,7 +39,9 @@ Symbol.of(d)            // Defect
 
 Importing `Error` shadows the platform `Error` constructor in that scope — use `globalThis.Error` when you need it.
 
-Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred.
+Promise rejection throws a branded [`UnhandledError`](../symbols/failure-hierarchy.md) (`Symbol.is(err, UnhandledError)`). Full typed catch channels are deferred.
+
+Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred. `wrap` rejection → `UnhandledError` is the bare-minimum bridge.
 
 ## Examples
 

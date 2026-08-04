@@ -22,5 +22,7 @@ Lowered to a TypeScript object type keyed by protocol identities (e.g. `Requires
 ## Related
 
 - [Requires](./requires.md)
+- [Async](./async.md)
 - [Thunk type](./thunk-type.md)
 - [use](../environment/use.md) / [provide](../environment/provide.md)
+- [wrap](../core/wrap.md)
