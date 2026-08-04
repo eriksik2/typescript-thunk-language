@@ -382,6 +382,11 @@ class Emitter {
   private needsRequiresType = false;
   private needsMakeSymbol = false;
   private needsThunkReturnType = false;
+  private needsSymbolType = false;
+  /** Same-file symbol name → resolved associated type text. */
+  private readonly symbolAssoc = new Map<string, string>();
+  /** Same-file symbol decls by name (for parent brand chaining). */
+  private readonly symbolDecls = new Map<string, SymbolDeclaration>();
 
   constructor(
     private readonly originalText: string,
@@ -395,6 +400,7 @@ class Emitter {
     this.needsRequiresType = typesNeeded.requires;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
+    this.collectSymbolDecls(ast);
 
     const imports = ast.statements.filter(
       (s): s is ImportDeclaration => s.kind === "ImportDeclaration",
@@ -422,12 +428,14 @@ class Emitter {
     if (
       this.needsThunkType ||
       this.needsRequiresType ||
-      this.needsThunkReturnType
+      this.needsThunkReturnType ||
+      this.needsSymbolType
     ) {
       const typeNames: string[] = [];
       if (this.needsThunkType) typeNames.push("Thunk");
       if (this.needsRequiresType) typeNames.push("Requires");
       if (this.needsThunkReturnType) typeNames.push("ThunkReturnType");
+      if (this.needsSymbolType) typeNames.push("SymbolType");
       this.write(
         `import type { ${typeNames.join(", ")} } from "${this.typesImportPath}";\n`,
       );
@@ -482,35 +490,112 @@ class Emitter {
     }
   }
 
+  private collectSymbolDecls(ast: SourceFile): void {
+    for (const stmt of ast.statements) {
+      if (stmt.kind !== "SymbolDeclaration") continue;
+      this.symbolDecls.set(stmt.name.name, stmt);
+    }
+    for (const stmt of ast.statements) {
+      if (stmt.kind !== "SymbolDeclaration") continue;
+      this.symbolAssoc.set(stmt.name.name, this.resolveAssocText(stmt));
+    }
+  }
+
+  /** Resolved associated type text (parent merge + extras). */
+  private resolveAssocText(decl: SymbolDeclaration): string {
+    const extra = decl.associatedType?.text;
+    const emptyExtra =
+      !extra || (decl.associatedType?.form === "object" && extra.replace(/\s/g, "") === "{}");
+
+    if (decl.extendsName) {
+      const parentName = decl.extendsName.name;
+      const parentAssoc =
+        this.symbolAssoc.get(parentName) ??
+        (() => {
+          this.needsSymbolType = true;
+          return `SymbolType<typeof ${parentName}>`;
+        })();
+      if (emptyExtra) return parentAssoc;
+      return `${parentAssoc} & ${extra}`;
+    }
+
+    if (!decl.associatedType) {
+      throw new Error(
+        `symbol ${decl.name.name} requires an associated type or extends clause`,
+      );
+    }
+    return decl.associatedType.text;
+  }
+
   private emitSymbolDeclaration(decl: SymbolDeclaration): void {
     const name = decl.name.name;
-    const assoc = decl.associatedType.text;
+    const assoc = this.symbolAssoc.get(name) ?? this.resolveAssocText(decl);
     const brand = `__brand_${name}`;
+    const parentName = decl.extendsName?.name;
+    const assocRange = decl.associatedType?.range ?? decl.name.range;
 
     this.write(`declare const ${brand}: unique symbol;\n`);
     this.write("const ");
     this.writeMapped(name, decl.name.range);
-    this.write(" = __makeSymbol<");
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(`>(${JSON.stringify(name)}) as unknown as ((value: `);
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(") => ");
-    this.writeMapped(name, decl.name.range);
-    this.write(") & { readonly key: symbol; readonly __assoc: ");
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(" };\n");
 
+    // Runtime identity
+    this.write(" = __makeSymbol<");
+    this.writeMapped(assoc, assocRange);
+    this.write(`>(${JSON.stringify(name)}`);
+    if (decl.isAbstract || parentName) {
+      this.write(", {");
+      if (decl.isAbstract) this.write(" abstract: true,");
+      if (parentName) {
+        this.write(" parent: ");
+        this.writeMapped(parentName, decl.extendsName!.range);
+        this.write(",");
+      }
+      this.write(" }");
+    }
+    this.write(") as unknown as ");
+
+    if (decl.isAbstract) {
+      this.write("{ readonly key: symbol; readonly __assoc: ");
+      this.writeMapped(assoc, assocRange);
+      this.write("; readonly __abstract: true }");
+    } else {
+      this.write("((value: ");
+      this.writeMapped(assoc, assocRange);
+      this.write(") => ");
+      this.writeMapped(name, decl.name.range);
+      this.write(") & { readonly key: symbol; readonly __assoc: ");
+      this.writeMapped(assoc, assocRange);
+      this.write(" }");
+    }
+    this.write(";\n");
+
+    // Branded type — intersect parent for LSP when extending
     this.write("type ");
     this.writeMapped(name, decl.name.range);
     this.write(" = ");
-    this.writeMapped(assoc, decl.associatedType.range);
+    if (parentName) {
+      this.writeMapped(parentName, decl.extendsName!.range);
+      this.write(" & ");
+      if (decl.associatedType && !emptyObjectType(decl.associatedType.text)) {
+        this.writeMapped(decl.associatedType.text, decl.associatedType.range);
+        this.write(" & ");
+      }
+    } else {
+      this.writeMapped(assoc, assocRange);
+      this.write(" & ");
+    }
     this.write(
-      ` & { readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
+      `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
     );
-    this.writeMapped(assoc, decl.associatedType.range);
-    this.write(" } & { readonly __symbolIdentity?: typeof ");
-    this.writeMapped(name, decl.name.range);
-    this.write(" };\n");
+    this.writeMapped(assoc, assocRange);
+    this.write(" }");
+    // IdentityCarrier only on non-abstract symbols (leaf branding)
+    if (!decl.isAbstract) {
+      this.write(" & { readonly __symbolIdentity?: typeof ");
+      this.writeMapped(name, decl.name.range);
+      this.write(" }");
+    }
+    this.write(";\n");
     this.write("\n");
   }
 
@@ -992,6 +1077,10 @@ function bodyContainsRun(stmts: Statement[]): boolean {
 
 function fileHasSymbolDecls(ast: SourceFile): boolean {
   return ast.statements.some((s) => s.kind === "SymbolDeclaration");
+}
+
+function emptyObjectType(text: string): boolean {
+  return text.replace(/\s/g, "") === "{}";
 }
 
 function fileHasRunInThunk(ast: SourceFile): boolean {

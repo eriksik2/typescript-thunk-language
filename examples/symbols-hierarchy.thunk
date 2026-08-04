@@ -1,0 +1,14 @@
+// Hierarchical symbols (extends + abstract)
+
+abstract symbol Animal {
+  name: string
+}
+
+symbol Dog extends Animal {
+  breed: string
+}
+
+symbol Cat extends Animal
+
+const dog: Animal = Dog({ name: "Rex", breed: "lab" })
+const cat: Animal = Cat({ name: "Misty" })

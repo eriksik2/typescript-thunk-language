@@ -825,14 +825,17 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 | | |
 |---|---|
-| **Status** | **Done** |
-| **Milestone** | M4 |
+| **Status** | **Done** (hierarchy / abstract: Done) |
+| **Milestone** | M4 · hierarchy post-M4 |
 
 **What it should look like.**
 
 ```ts
 symbol Age = number
 symbol Database { name: string }
+
+abstract symbol Failure { message: string }
+symbol Defect extends Failure
 
 const a: Age = Age(30)
 const db = run use(Database)
@@ -845,7 +848,11 @@ const db = run use(Database)
 | `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
 | `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
+| `abstract symbol` | Not callable; still a type / `Symbol.is` target |
+| `symbol Child extends Parent` | Child type <: Parent; `Symbol.is(child, Parent)`; env keys stay exact |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
+
+Built-in Failure tree: see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).
 
 ---
 

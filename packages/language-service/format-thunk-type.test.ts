@@ -143,6 +143,14 @@ describe("formatSymbolDisplayString", () => {
       "const Database: symbol { name: string }",
     );
   });
+
+  test("abstract const identity → abstract symbol T", () => {
+    const raw =
+      "const Failure: { readonly key: symbol; readonly __assoc: { message: string; }; readonly __abstract: true }";
+    expect(formatHoverDisplayString(raw)).toBe(
+      "const Failure: abstract symbol { message: string }",
+    );
+  });
 });
 
 describe("splitTopLevelArgs / parseProtocolBag", () => {

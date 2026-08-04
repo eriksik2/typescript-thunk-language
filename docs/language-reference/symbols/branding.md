@@ -25,8 +25,21 @@ For **object** (and function) values, branding **stamps** the symbol identity on
 
 Primitives (`Age(30)`) stay naked so `Age` → `number` assignability holds; use [`layerOf`](../environment/layer.md) when providing primitive services.
 
+## Abstract symbols
+
+`abstract symbol` identities are **not** callable. Brand with a concrete descendant instead:
+
+```ts
+abstract symbol Failure { message: string }
+symbol Defect extends Failure
+
+const d = Defect({ message: "boom" })
+// Failure({ message: "x" }) // runtime error
+```
+
 ## Related
 
 - [symbol declarations](./symbol-declarations.md)
 - [Symbol.of](./symbol-of.md)
+- [Symbol.is](./symbol-is.md)
 - [provide](../environment/provide.md)

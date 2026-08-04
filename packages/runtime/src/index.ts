@@ -11,9 +11,25 @@ export {
   layerOf,
   mergeLayers,
   symbolOf,
+  symbolIs,
+  symbolExtends,
   Symbol,
   type Layer,
 } from "./internal";
+
+export {
+  Failure,
+  Defect,
+  UnhandledError,
+  Error,
+} from "./failure";
+export type {
+  Failure,
+  Defect,
+  UnhandledError,
+  Error,
+  FailurePayload,
+} from "./failure";
 
 export type {
   Thunk,

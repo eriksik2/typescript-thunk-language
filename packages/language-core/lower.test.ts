@@ -26,9 +26,11 @@ describe("parse", () => {
     expect(alias.statements[0]?.kind).toBe("SymbolDeclaration");
     const aliasDecl = alias.statements[0] as {
       name: { name: string };
+      isAbstract: boolean;
       associatedType: { form: string; text: string };
     };
     expect(aliasDecl.name.name).toBe("Age");
+    expect(aliasDecl.isAbstract).toBe(false);
     expect(aliasDecl.associatedType.form).toBe("alias");
     expect(aliasDecl.associatedType.text).toBe("number");
 
@@ -41,6 +43,39 @@ describe("parse", () => {
     };
     expect(objDecl.associatedType.form).toBe("object");
     expect(objDecl.associatedType.text).toContain("name: string");
+  });
+
+  test("parses abstract symbol and extends", () => {
+    const src = parseThunkSource(`abstract symbol Failure {
+  message: string
+}
+symbol Defect extends Failure
+symbol Error extends Failure {
+  code: number
+}
+`);
+    expect(src.statements).toHaveLength(3);
+    const failure = src.statements[0] as {
+      kind: string;
+      name: { name: string };
+      isAbstract: boolean;
+      extendsName?: { name: string };
+      associatedType?: { text: string };
+    };
+    expect(failure.isAbstract).toBe(true);
+    expect(failure.name.name).toBe("Failure");
+    expect(failure.extendsName).toBeUndefined();
+    expect(failure.associatedType?.text).toContain("message: string");
+
+    const defect = src.statements[1] as typeof failure;
+    expect(defect.isAbstract).toBe(false);
+    expect(defect.name.name).toBe("Defect");
+    expect(defect.extendsName?.name).toBe("Failure");
+    expect(defect.associatedType).toBeUndefined();
+
+    const err = src.statements[2] as typeof failure;
+    expect(err.extendsName?.name).toBe("Failure");
+    expect(err.associatedType?.text).toContain("code: number");
   });
 });
 
@@ -70,6 +105,22 @@ const a: Age = Age(30)
     expect(lowered.generatedText).toContain("__symbolIdentity?: typeof Age");
     expect(lowered.generatedText).toContain('__makeSymbol<number>("Age")');
     expect(lowered.generatedText).not.toContain("createTag");
+  });
+
+  test("lowers abstract symbol + extends with parent brand intersection", () => {
+    const lowered = lowerThunkSource(`abstract symbol Failure {
+  message: string
+}
+symbol Defect extends Failure
+`);
+    expect(lowered.generatedText).toContain("abstract: true");
+    expect(lowered.generatedText).toContain("parent: Failure");
+    expect(lowered.generatedText).toContain("__abstract: true");
+    expect(lowered.generatedText).toContain("type Defect = Failure &");
+    expect(lowered.generatedText).toContain("__brand_Defect");
+    expect(lowered.generatedText).toMatch(
+      /__makeSymbol<\{\s*message:\s*string\s*\}>\("Defect"/,
+    );
   });
 
   test("lowers requires.thunk-style symbol + use", () => {

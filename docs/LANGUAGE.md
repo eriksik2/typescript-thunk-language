@@ -1430,15 +1430,19 @@ The object-body form is sugar for `symbol Database = { name: string }`.
 
 **Semantics**
 
-1. **Value** `Name` has type conceptually `symbol T` (identity typed by associated type `T`). It is **callable**: `Name(x: T) => Name` (branded intro).
+1. **Value** `Name` has type conceptually `symbol T` (identity typed by associated type `T`). It is **callable**: `Name(x: T) => Name` (branded intro), unless declared `abstract`.
 2. **Type** `Name` is the **branded** type of inhabitants (nominal over `T`).
 3. Assignability: `Name` → `T` allowed; `T` → `Name` only via `Name(...)`.
 4. `typeof Name` is the symbol identity. `typeof brandedValue` is `Name`.
 5. `SymbolType<X>` extracts `T` from either the identity or a branded inhabitant.
-6. Branding **object** values stamps the identity so `Symbol.of(branded)` recovers `Name`; primitives stay naked (use `layerOf` for those).
+6. Branding **object** values stamps the identity so `Symbol.of(branded)` recovers `Name` (leaf); primitives stay naked (use `layerOf` for those).
 7. Env: `use(Name)`; `provide(thunk, branded)` or `provide(thunk, layerOf(Name, impl))`.
-8. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape.
-9. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
+8. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape — **exact** match (not subtype-aware).
+9. **`extends`**: child branded type is a subtype of the parent (Liskov). Runtime parent links power `Symbol.is` / `Symbol.extends`.
+10. **`abstract`**: identity is not a brand constructor; still usable as a type, parent, and `Symbol.is` target.
+11. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
+
+Built-in Failure hierarchy (`Failure` abstract root; `Defect`, `UnhandledError`, `Error`): see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).
 
 Browseable how-to: [`language-reference/symbols/`](./language-reference/symbols/README.md), [`language-reference/environment/`](./language-reference/environment/README.md).
 
