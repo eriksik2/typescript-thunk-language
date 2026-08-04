@@ -15,6 +15,7 @@ import {
 } from "@thunk/language-core";
 import path from "node:path";
 import ts from "typescript";
+import { formatThunkDisplayString } from "./volar/format-thunk-type";
 
 export interface HoverResult {
   readonly originalPosition: Position;
@@ -190,7 +191,9 @@ export function createThunkProject(
       return {
         originalPosition: position,
         generatedPosition: generatedPos,
-        displayString: ts.displayPartsToString(info.displayParts),
+        displayString: formatThunkDisplayString(
+          ts.displayPartsToString(info.displayParts),
+        ),
         documentation:
           ts.displayPartsToString(info.documentation) || undefined,
         generatedSnippet: lowered.generatedText.slice(

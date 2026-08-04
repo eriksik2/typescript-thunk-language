@@ -1,53 +1,104 @@
 /**
  * Semantic primitives for Thunk.
- * Representation is tagged nodes; executor is recursive (fine for the prototype).
+ *
+ * Runtime representation: tagged nodes (recursive executor).
+ * Public types: `Thunk<T, P>` from `@thunk/types` (phantom protocols).
  */
 
-export type RuntimeThunk<T> =
+import type {
+  EmptyProtocols,
+  ExecuteResult,
+  MergeProtocols,
+  ProtocolBag,
+  Thunk,
+} from "@thunk/types";
+
+type ThunkNode<T> =
   | SucceedNode<T>
   | DeferNode<T>
   | BindNode<unknown, T>;
 
-export interface SucceedNode<T> {
+interface SucceedNode<T> {
   readonly kind: "succeed";
   readonly value: T;
 }
 
-export interface DeferNode<T> {
+interface DeferNode<T> {
   readonly kind: "defer";
-  readonly factory: () => RuntimeThunk<T>;
+  readonly factory: () => ThunkNode<T>;
 }
 
-export interface BindNode<A, B> {
+interface BindNode<A, B> {
   readonly kind: "bind";
-  readonly source: RuntimeThunk<A>;
-  readonly continuation: (value: A) => RuntimeThunk<B>;
+  readonly source: ThunkNode<A>;
+  readonly continuation: (value: A) => ThunkNode<B>;
 }
 
-export function succeed<T>(value: T): RuntimeThunk<T> {
-  return { kind: "succeed", value };
+function asThunk<T, P extends ProtocolBag = EmptyProtocols>(
+  node: ThunkNode<T>,
+): Thunk<T, P> {
+  return node as unknown as Thunk<T, P>;
 }
 
-export function defer<T>(factory: () => RuntimeThunk<T>): RuntimeThunk<T> {
-  return { kind: "defer", factory };
+function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
+  return thunk as unknown as ThunkNode<T>;
 }
 
-export function bind<A, B>(
-  source: RuntimeThunk<A>,
-  continuation: (value: A) => RuntimeThunk<B>,
-): RuntimeThunk<B> {
-  return { kind: "bind", source, continuation };
+/** Completed thunk — empty protocol bag. */
+export function succeed<T>(value: T): Thunk<T, EmptyProtocols> {
+  return asThunk({ kind: "succeed", value });
 }
 
-export function execute<T>(thunk: RuntimeThunk<T>): T {
+/** Defer construction until execute — preserves protocols from the factory. */
+export function defer<T, P extends ProtocolBag = EmptyProtocols>(
+  factory: () => Thunk<T, P>,
+): Thunk<T, P> {
+  return asThunk({
+    kind: "defer",
+    factory: () => asNode(factory()),
+  });
+}
+
+/**
+ * Sequence thunks; merge protocol bags (`Requires` via union).
+ */
+export function bind<
+  A,
+  PA extends ProtocolBag,
+  B,
+  PB extends ProtocolBag,
+>(
+  source: Thunk<A, PA>,
+  continuation: (value: A) => Thunk<B, PB>,
+): Thunk<B, MergeProtocols<PA, PB>> {
+  return asThunk({
+    kind: "bind",
+    source: asNode(source),
+    continuation: (value) => asNode(continuation(value)),
+  });
+}
+
+/**
+ * Run a thunk to a value.
+ * Type-level: fails with `CompileError` when `Requires` remain.
+ */
+export function execute<T, P extends ProtocolBag>(
+  thunk: Thunk<T, P>,
+): ExecuteResult<T, P> {
+  return executeNode(asNode(thunk)) as ExecuteResult<T, P>;
+}
+
+function executeNode<T>(thunk: ThunkNode<T>): T {
   switch (thunk.kind) {
     case "succeed":
       return thunk.value;
     case "defer":
-      return execute(thunk.factory());
+      return executeNode(thunk.factory());
     case "bind": {
-      const value = execute(thunk.source);
-      return execute(thunk.continuation(value));
+      const value = executeNode(thunk.source);
+      return executeNode(thunk.continuation(value));
     }
   }
 }
+
+export type { Thunk, EmptyProtocols, ProtocolBag, MergeProtocols, ExecuteResult };

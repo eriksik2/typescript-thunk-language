@@ -48,23 +48,71 @@ for (const d of project.getDiagnostics(fileName)) {
   console.log(" -", d);
 }
 
-const nameOffset = source.indexOf("const value") + "const ".length;
-const hover = hoverAtOffset(project, fileName, source, nameOffset);
+const valueOffset = source.indexOf("const value") + "const ".length;
+const valueHover = hoverAtOffset(project, fileName, source, valueOffset);
 
 console.log("\n=== Hover on `value` (from `const value = run random`) ===");
-if (!hover || !hover.displayString) {
-  console.error("FAIL: no hover result");
-  console.error("diagnostics:", hover?.diagnostics);
-  console.error("snippet:", hover?.generatedSnippet);
+if (!valueHover || !valueHover.displayString) {
+  console.error("FAIL: no hover result for value");
+  console.error("diagnostics:", valueHover?.diagnostics);
+  console.error("snippet:", valueHover?.generatedSnippet);
   process.exit(1);
 }
 
-console.log("display:", hover.displayString);
-console.log("at generated:", hover.generatedPosition);
+console.log("display:", valueHover.displayString);
+console.log("at generated:", valueHover.generatedPosition);
 
-if (!/number/i.test(hover.displayString)) {
-  console.error("FAIL: expected hover type to mention number, got:", hover.displayString);
+if (!/number/i.test(valueHover.displayString)) {
+  console.error(
+    "FAIL: expected hover type to mention number, got:",
+    valueHover.displayString,
+  );
   process.exit(1);
 }
 
-console.log("\nOK — M0 hover mapping works.");
+const randomOffset = source.indexOf("const random") + "const ".length;
+const randomHover = hoverAtOffset(project, fileName, source, randomOffset);
+
+console.log("\n=== Hover on `random` (thunk binding) ===");
+if (!randomHover || !randomHover.displayString) {
+  console.error("FAIL: no hover result for random");
+  console.error("diagnostics:", randomHover?.diagnostics);
+  process.exit(1);
+}
+
+console.log("display:", randomHover.displayString);
+
+if (/RuntimeThunk/i.test(randomHover.displayString)) {
+  console.error(
+    "FAIL: hover still shows RuntimeThunk; expected Thunk, got:",
+    randomHover.displayString,
+  );
+  process.exit(1);
+}
+
+if (!/Thunk/i.test(randomHover.displayString)) {
+  console.error(
+    "FAIL: expected hover type to mention Thunk, got:",
+    randomHover.displayString,
+  );
+  process.exit(1);
+}
+
+if (!/^const random: Thunk<number>$/m.test(randomHover.displayString.trim())) {
+  // Allow multiline pretty form; primary line must be Thunk<number> without EmptyProtocols
+  const prettyOk =
+    randomHover.displayString.includes("Thunk<number>") &&
+    !randomHover.displayString.includes("EmptyProtocols") &&
+    !/RuntimeThunk/i.test(randomHover.displayString);
+  if (!prettyOk) {
+    console.error(
+      "FAIL: expected pretty Thunk<number> without EmptyProtocols, got:",
+      randomHover.displayString,
+    );
+    process.exit(1);
+  }
+}
+
+console.log("\nOK — hover shows number for run binding and pretty Thunk<number> for thunk.");
+
+

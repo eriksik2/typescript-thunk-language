@@ -12,8 +12,9 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 |---|---|
 | **M0** — parse → lower → TS hover mapping (kernel) | Done (`bun run proof:hover`) |
 | **M1** — Volar.js plugin + Cursor/VS Code extension + CLI emit | Done — [packages/vscode/README.md](./packages/vscode/README.md) |
-| **M2** — pipes + multi-`run` + `defer` placement | **Next** |
-| M3+ — protocols, `use`/`provide` | After M2 |
+| **Typed core** — `Thunk<T, P>`, type-level `Requires`, pretty hover | Done |
+| **M2** — pipes + multi-`run` + `defer` placement | **Next** (syntax) |
+| M3+ — postfix protocol surface, `use`/`provide` | After typed core (partially unblocked) |
 
 ## Packages
 
@@ -30,9 +31,8 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ```bash
 bun install
-bun run proof:hover    # M0 kernel proof
-bun run test:core
-bun run test:ls        # mapping / Volar unit tests
+bun run proof:hover    # hover: Thunk<number> + run binding number
+bun run test           # core + types + runtime + language-service
 bun run thunk -- build examples/basic.thunk
 bun run build:editor   # language-server + vscode extension
 ```

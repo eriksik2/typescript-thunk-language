@@ -151,6 +151,8 @@ Or an equivalent branded intersection. Exact spelling is an implementation detai
 
 Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires`: `never`).
 
+**Status (typed core landed):** `@thunk/types` provides `Thunk`, `Requires`, `MergeProtocols`, `ExecuteResult` / `CompileError`. Runtime primitives are typed as returning `Thunk<T, P>`. Hover pretty-prints postfix form. Still missing: postfix syntax in `.thunk`, `protocol` declarations, `use` / `provide` / `Layer`.
+
 ---
 
 ## 6. Runtime vs types

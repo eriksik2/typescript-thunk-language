@@ -20,13 +20,14 @@ bun run build:editor
    The launch config uses `--extensionDevelopmentPath=packages/vscode` and opens `examples/`.
 3. In the Extension Development Host, open `examples/basic.thunk`.
 
-## Manual F5 checklist (M1 exit)
+## Manual F5 checklist
 
 Do these in the Extension Development Host after F5:
 
-1. **Hover** — On `value` in `const value = run random`, hover should show a type mentioning `number`.
-2. **Type error diagnostic** — Temporarily change the return to something invalid (e.g. `return value * "x"`). A TypeScript diagnostic should appear on the `.thunk` line (mapped from virtual TS), not only on generated code.
-3. **Parse error** — Introduce a syntax error (e.g. remove a brace). A parse diagnostic should appear and the language server should stay alive (no crash / endless restart loop).
+1. **Hover on run binding** — On `value` in `const value = run random`, hover should show a type mentioning `number`.
+2. **Hover on thunk** — On `random` or `program`, hover should show **`Thunk<number>`** (not `RuntimeThunk`, not `Thunk<number, EmptyProtocols>`).
+3. **Type error diagnostic** — Temporarily change the return to something invalid (e.g. `return value * "x"`). A TypeScript diagnostic should appear on the `.thunk` line (mapped from virtual TS), not only on generated code.
+4. **Parse error** — Introduce a syntax error (e.g. remove a brace). A parse diagnostic should appear and the language server should stay alive (no crash / endless restart loop).
 
 Revert smoke edits after checking.
 

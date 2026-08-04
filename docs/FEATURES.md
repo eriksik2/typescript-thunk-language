@@ -153,8 +153,8 @@ run getUser(id)
 
 | | |
 |---|---|
-| **Status** | **Scaffold** |
-| **Milestone** | M3 (surface) · types package exists |
+| **Status** | **Done** (type carrier + hover) |
+| **Milestone** | Typed core (ahead of M3 surface syntax) |
 
 **What it is.** A thunk’s primary type parameter is its produced value.
 
@@ -170,10 +170,11 @@ const value: Thunk<number> = thunk {
 
 | Example | Expected |
 |---|---|
-| Pure thunk | Hover/type shows something equivalent to `Thunk<number>` (or runtime brand) once encoding is used in emit |
-| Today’s M0 emit | Uses runtime `RuntimeThunk` nodes; `@thunk/types` `Thunk<T, P>` is not yet what lowering emits |
+| Pure thunk binding (`random`) | Hover shows `Thunk<number>` (not `RuntimeThunk`) |
+| Empty protocol bag | Pretty-printer elides `EmptyProtocols` / `{}` |
+| Runtime | Tagged nodes cast to `Thunk<T, P>` at API boundary (`@thunk/runtime`) |
 
-**Implementation notes.** [`packages/types`](../packages/types/src/index.ts) defines `Thunk<T, P>`. Lowering currently imports runtime ops only, not the type encoding.
+**Implementation notes.** [`packages/types`](../packages/types/src/index.ts) defines `Thunk<T, P>`. Runtime primitives return `Thunk`. Language-service pretty-prints hover.
 
 ---
 
@@ -620,8 +621,8 @@ transform(value, a, b)
 
 | | |
 |---|---|
-| **Status** | **Not started** (surface) · **Scaffold** (internal `ProtocolBag`) |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — encoding + pretty-print **Done**; `.thunk` surface syntax **Not started** |
+| **Milestone** | Encoding now · surface **M3** |
 
 **What it is.**
 
@@ -636,7 +637,8 @@ Thunk<User>
 | Example | Expected |
 |---|---|
 | Multiple postfix entries | One bag; duplicates merge per protocol |
-| Hover | Prefer pretty postfix form (open; may show encoding first) |
+| Hover | Pretty-printer shows postfix form from `Thunk<T, ProtocolBag<…>>` encoding |
+| Writing postfix in `.thunk` | Not parsed yet — use typed TS/`WithRequires` until M3 |
 
 ---
 
@@ -644,8 +646,8 @@ Thunk<User>
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — `MergeProtocols` / `RequiresBind` in `@thunk/types` (via `bind` signature) |
+| **Milestone** | Type-level now · front-end surface normalize **M3** |
 
 **What it is.** Protocol-aware merge — **not** TS intersection of duplicate keys.
 
@@ -653,8 +655,8 @@ Thunk<User>
 
 | Example | Expected |
 |---|---|
-| `Requires(A)` + `Requires(B)` | `Requires(A \| B)` via `Requires.bind` |
-| Different protocols | Independent entries in the bag |
+| `Requires(A)` + `Requires(B)` | `Requires(A \| B)` via `RequiresBind` / `MergeProtocols` |
+| Different protocols | Other keys intersected; `Requires` special-cased |
 
 ---
 
@@ -687,8 +689,8 @@ protocol Requires<Tags extends Tag<any>> {
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — hard-coded `Requires` via `bind` / `succeed` / `defer` / `execute` signatures |
+| **Milestone** | Type-level now · general `protocol` declarations **M3** |
 
 **What it is.** Each protocol may define `succeed` / `defer` / `bind` / `execute` type functions over **its own payload only**.
 
@@ -696,8 +698,9 @@ protocol Requires<Tags extends Tag<any>> {
 
 | Example | Expected |
 |---|---|
-| `Requires.bind<Database, Logger>` | `Database \| Logger` |
-| Protocol does not see return type / other protocols | Enforced by compiler bag assembly |
+| `RequiresBind<Database, Logger>` | `Database \| Logger` |
+| `bind(thunkA, cont)` | Return type uses `MergeProtocols` |
+| Protocol does not see return type / other protocols | Enforced by bag merge helpers |
 
 ---
 
@@ -705,10 +708,10 @@ protocol Requires<Tags extends Tag<any>> {
 
 | | |
 |---|---|
-| **Status** | **Not started** (design resolved) |
-| **Milestone** | **M3** |
+| **Status** | **Done** (in runtime signatures) |
+| **Milestone** | Typed core |
 
-**Decision.** Inherited defaults: `succeed<> = never`, `defer<A> = A`. Identity for absent entries comes from `succeed<>`.
+**Decision.** `succeed` → empty bag; `defer` preserves `P`; absent `Requires` ≡ `never`.
 
 ---
 
@@ -716,8 +719,8 @@ protocol Requires<Tags extends Tag<any>> {
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — falls out of typed `bind` when operands carry bags; no `use` yet to introduce them in source |
+| **Milestone** | **M3–M4** |
 
 **What it is.** Infer bag by applying protocol type functions along generated `bind` / `succeed` / `defer` / `execute`.
 
@@ -762,8 +765,8 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 | | |
 |---|---|
-| **Status** | **Scaffold** (`CompileError` type only) |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — type-level merge + `ExecuteResult` / `CompileError`; no surface/`use` yet |
+| **Milestone** | Type-level now · full **M3–M4** |
 
 **What it is.** Accumulate requirements on `bind`; reject `execute` if payload ≠ `never`.
 
@@ -771,8 +774,8 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 | Example | Expected |
 |---|---|
-| `Requires.execute<never>` | OK |
-| `Requires.execute<Database>` | `CompileError<\`Unsatisfied requirements\`>` |
+| `ExecuteResult<T, EmptyProtocols>` | `T` |
+| `ExecuteResult<T, WithRequires<Database>>` | `CompileError<\`Unsatisfied requirements\`>` |
 | Pure `succeed(1)` | No requirements |
 
 ---
@@ -880,8 +883,8 @@ provide(thunk, layer)  // removes provided Requires; preserves other protocols
 
 | | |
 |---|---|
-| **Status** | **Scaffold** |
-| **Milestone** | M3 |
+| **Status** | **Done** |
+| **Milestone** | Typed core |
 
 Extract protocol bag from a thunk type. Exists in `@thunk/types`.
 
@@ -891,21 +894,21 @@ Extract protocol bag from a thunk type. Exists in `@thunk/types`.
 
 | | |
 |---|---|
-| **Status** | **Scaffold** |
-| **Milestone** | M3–M4 |
+| **Status** | **Done** |
+| **Milestone** | Typed core |
 
 `Thunk<User> Requires(…) Once` → `Thunk<User>`.
 
 ---
 
-## 8.3 `ReturnType<T>` (thunk)
+## 8.3 `ThunkReturnType<T>` (thunk)
 
 | | |
 |---|---|
-| **Status** | **Scaffold** |
-| **Milestone** | M3 |
+| **Status** | **Done** (`ThunkReturnType`; deprecated alias `ReturnType`) |
+| **Milestone** | Typed core |
 
-Extract produced value type. Name provisional (may clash with TS `ReturnType`).
+Extract produced value type.
 
 ---
 
@@ -913,8 +916,8 @@ Extract produced value type. Name provisional (may clash with TS `ReturnType`).
 
 | | |
 |---|---|
-| **Status** | **Scaffold** (`OmitProtocol`) |
-| **Milestone** | M3–M4 |
+| **Status** | **Done** (`OmitProtocol`) |
+| **Milestone** | Typed core |
 
 Remove one protocol entry from a bag.
 
@@ -924,8 +927,8 @@ Remove one protocol entry from a bag.
 
 | | |
 |---|---|
-| **Status** | **Scaffold** |
-| **Milestone** | M3 |
+| **Status** | **Done** (used by `ExecuteResult`) |
+| **Milestone** | Typed core |
 
 Marker type for failed `execute` validation.
 
@@ -996,10 +999,10 @@ Conceptual `GetProtocol` / `SetProtocol` / `RemoveProtocol` — provisional API.
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | After M3 encoding |
+| **Status** | **Done** |
+| **Milestone** | Typed core |
 
-Show `Thunk<T> Requires(A)` instead of raw encoding when possible.
+Show `Thunk<T> Requires(A)` instead of raw encoding when possible. Empty bags → `Thunk<T>` only. Wired in `createThunkProject` and Volar TS hover wrap.
 
 ---
 
@@ -1044,8 +1047,8 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Explicit `return` | Done | M0 |
 | Ordinary statements (basic) | Partial | M0+ |
 | Hybrid TS expressions | Partial | M0+ |
-| `Thunk<T>` surface typing | Scaffold | M3 |
-| `succeed` / `defer` / `bind` / `execute` runtime | Done | M0 |
+| `Thunk<T>` surface typing | Done (carrier + hover) | Typed core |
+| `succeed` / `defer` / `bind` / `execute` runtime | Done (returns `Thunk`) | M0 / typed core |
 | Single-`run` lowering | Done | M0 |
 | Multi-`run` lowering | Partial | **M2** |
 | Code before / between `run` | Partial | **M2** |
@@ -1055,13 +1058,13 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Pipe `\|` | Not started | **M2** |
 | Pipe + `run` precedence | Not started | **M2** |
 | Postfix protocol syntax | Not started | **M3** |
-| Protocol normalization / inference | Not started | **M3** |
+| Protocol normalization / inference | Partial (type-level `MergeProtocols`) | **M3** surface |
 | `protocol` declarations | Not started | **M3** |
-| `Requires` + `CompileError` on execute | Scaffold | **M3** |
+| `Requires` + `CompileError` on execute | Partial (type-level) | **M3–M4** |
 | `Tag` / `use` / `Layer` / `provide` | Not started | **M4** |
-| Type utilities | Scaffold | M3–M4 |
+| Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
-| Hover pretty protocols | Not started | post-M3 |
+| Hover pretty protocols | Done | Typed core |
 | Errors / async / concurrency / resources / … | Deferred | later |
 
-**Next implementation focus:** M2 rows (pipes, multi-`run`, defer placement tests) — then M3 protocol encoding.
+**Next implementation focus:** M2 (pipes / multi-`run`) and/or M3 surface postfix syntax + `use`/`provide` on top of the typed `Requires` core.

@@ -51,6 +51,9 @@
     "packages/runtime": {
       "name": "@thunk/runtime",
       "version": "0.0.0",
+      "dependencies": {
+        "@thunk/types": "workspace:*",
+      },
     },
     "packages/types": {
       "name": "@thunk/types",

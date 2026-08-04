@@ -13,6 +13,7 @@ import {
   createThunkLanguagePlugin,
   createThunkParseService,
 } from "./volar/index";
+import { wrapTypeScriptServicesForThunkHover } from "./volar/wrap-ts-hover";
 
 const connection = createConnection();
 const server = createServer(connection);
@@ -38,7 +39,12 @@ connection.onInitialize((params) => {
         languagePlugins: [languagePlugin],
       }),
     ),
-    [...createTypeScriptServices(tsdk.typescript), createThunkParseService()],
+    [
+      ...wrapTypeScriptServicesForThunkHover(
+        createTypeScriptServices(tsdk.typescript),
+      ),
+      createThunkParseService(),
+    ],
   );
 });
 
