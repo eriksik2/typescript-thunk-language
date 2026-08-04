@@ -113,6 +113,32 @@ if (!/^const random: Thunk<number>$/m.test(randomHover.displayString.trim())) {
   }
 }
 
-console.log("\nOK — hover shows number for run binding and pretty Thunk<number> for thunk.");
+const programOffset = source.indexOf("const program") + "const ".length;
+const programHover = hoverAtOffset(project, fileName, source, programOffset);
+
+console.log("\n=== Hover on `program` (bound thunk) ===");
+if (!programHover || !programHover.displayString) {
+  console.error("FAIL: no hover result for program");
+  process.exit(1);
+}
+console.log("display:", programHover.displayString);
+
+if (
+  !programHover.displayString.includes("Thunk<number>") ||
+  /Protocols\s*\(/.test(programHover.displayString) ||
+  /Omit</.test(programHover.displayString) ||
+  /EmptyProtocols/.test(programHover.displayString) ||
+  /RuntimeThunk/i.test(programHover.displayString)
+) {
+  console.error(
+    "FAIL: expected pretty Thunk<number> without Protocols/Omit/EmptyProtocols, got:",
+    programHover.displayString,
+  );
+  process.exit(1);
+}
+
+console.log(
+  "\nOK — hover shows number for run binding and pretty Thunk<number> for thunks.",
+);
 
 

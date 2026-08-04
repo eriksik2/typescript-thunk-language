@@ -13,16 +13,16 @@ Implementation / editor: [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 | **M0** — parse → lower → TS hover mapping (kernel) | Done (`bun run proof:hover`) |
 | **M1** — Volar.js plugin + Cursor/VS Code extension + CLI emit | Done — [packages/vscode/README.md](./packages/vscode/README.md) |
 | **Typed core** — `Thunk<T, P>`, type-level `Requires`, pretty hover | Done |
-| **M2** — pipes + multi-`run` + `defer` placement | **Next** (syntax) |
-| M3+ — postfix protocol surface, `use`/`provide` | After typed core (partially unblocked) |
+| **Protocols surface** — postfix syntax, `use`/`provide`/`Layer`, `protocol` decls | Done |
+| **M2** — pipes + multi-`run` + `defer` placement | **Next** |
 
 ## Packages
 
 | Package | Role |
 |---|---|
 | `@thunk/language-core` | Parse, AST, lowering, source maps |
-| `@thunk/runtime` | `succeed` / `defer` / `bind` / `execute` |
-| `@thunk/types` | `Thunk` type encoding + protocol utilities |
+| `@thunk/runtime` | `succeed` / `defer` / `bind` / `execute` / `use` / `provide` / `Layer` |
+| `@thunk/types` | `Thunk` encoding, `Requires`, `Tag`, protocol utilities |
 | `@thunk/language-service` | TS LS host (M0) + Volar language plugin / server |
 | `@thunk/compiler` | CLI lower + emit (`bun run thunk -- build …`) |
 | `@thunk/vscode` | Editor extension — [setup & F5](./packages/vscode/README.md) |

@@ -1,0 +1,5 @@
+
+function Tag<T>(): const symbol {
+  return Symbol(T)
+}
+const symbol Database = Tag<{ name: string }>();

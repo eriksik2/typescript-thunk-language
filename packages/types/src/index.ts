@@ -51,6 +51,12 @@ export type GetRequires<P extends ProtocolBag> = P extends {
 export type RequiresBind<A, B> = A | B;
 
 /**
+ * Collapse bags with no keys to `EmptyProtocols` so TS does not display
+ * `Omit<EmptyProtocols, typeof Requires>` after pure `bind` merges.
+ */
+type SimplifyEmpty<P> = keyof P extends never ? EmptyProtocols : P;
+
+/**
  * Merge two protocol bags.
  * `Requires` payloads use `RequiresBind` (union); absent side is `never`.
  * Other keys are intersected via `Omit` + `&` (v0: no other protocols yet).
@@ -59,11 +65,10 @@ export type MergeProtocols<
   A extends ProtocolBag,
   B extends ProtocolBag,
 > = [RequiresBind<GetRequires<A>, GetRequires<B>>] extends [never]
-  ? Omit<A, Requires> & Omit<B, Requires>
-  : Omit<A, Requires> &
-      Omit<B, Requires> & {
-        readonly [Requires]: RequiresBind<GetRequires<A>, GetRequires<B>>;
-      };
+  ? SimplifyEmpty<Omit<A, Requires> & Omit<B, Requires>>
+  : SimplifyEmpty<Omit<A, Requires> & Omit<B, Requires>> & {
+      readonly [Requires]: RequiresBind<GetRequires<A>, GetRequires<B>>;
+    };
 
 /** Extract yield type from a thunk. */
 export type ThunkReturnType<T extends Thunk<any, any>> = T extends Thunk<
@@ -103,3 +108,26 @@ export type ExecuteResult<T, P extends ProtocolBag> = [
 
 /** @deprecated Prefer `ThunkReturnType` — name clashes with lib `ReturnType`. */
 export type ReturnType<T extends Thunk<any, any>> = ThunkReturnType<T>;
+
+/**
+ * Remove provided requirement tags from a bag (`provide`).
+ * `S` is the union of tag types supplied by a Layer.
+ */
+export type ProvideRequires<
+  P extends ProtocolBag,
+  S,
+> = [GetRequires<P>] extends [never]
+  ? P
+  : [Exclude<GetRequires<P>, S>] extends [never]
+    ? SimplifyEmpty<Omit<P, Requires>>
+    : SimplifyEmpty<Omit<P, Requires>> & {
+        readonly [Requires]: Exclude<GetRequires<P>, S>;
+      };
+
+/** Typed service identity (compile-time service + runtime key). */
+export type Tag<Service = unknown> = {
+  readonly key: symbol;
+  readonly __service?: Service;
+};
+
+export type InferTag<T> = T extends Tag<infer S> ? S : never;

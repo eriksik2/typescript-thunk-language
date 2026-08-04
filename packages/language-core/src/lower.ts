@@ -1,15 +1,18 @@
 /**
  * Lower Thunk AST → TypeScript text + source maps.
- *
- * M0 rules:
- * - `thunk { body }` → `defer(() => <lowered body>)`
- * - `run expr` inside thunk → `bind(expr, value => …)`
- * - `run expr` at top level → `execute(expr)`
- * - `return expr` inside thunk → `succeed(expr)`
  */
 
-import type { Expression, SourceFile, Statement, ThunkExpression } from "./ast";
+import type {
+  Expression,
+  ProtocolDeclaration,
+  SourceFile,
+  Statement,
+  ThunkExpression,
+  TypeAnnotation,
+  VariableStatement,
+} from "./ast";
 import { parseThunkSource } from "./parse";
+import { encodeThunkTypeAnnotation } from "./protocol-encode";
 import type { Mapping, Range, SourceMap } from "./source-map";
 
 export interface LoweredFile {
@@ -19,21 +22,36 @@ export interface LoweredFile {
   readonly sourceMap: SourceMap;
 }
 
+export interface LowerOptions {
+  runtimeImportPath?: string;
+  typesImportPath?: string;
+}
+
 class Emitter {
   private chunks: string[] = [];
   private mappings: Mapping[] = [];
   private line = 0;
   private character = 0;
+  private needsTypesImport = false;
 
   constructor(
     private readonly originalText: string,
     private readonly runtimeImportPath: string,
+    private readonly typesImportPath: string,
   ) {}
 
   emitFile(ast: SourceFile): LoweredFile {
+    this.needsTypesImport = fileNeedsTypesImport(ast);
+
     this.write(
-      `import { succeed, defer, bind, execute } from "${this.runtimeImportPath}";\n\n`,
+      `import { succeed, defer, bind, execute, use, provide, layerOf, createTag, mergeLayers } from "${this.runtimeImportPath}";\n`,
     );
+    if (this.needsTypesImport) {
+      this.write(
+        `import type { Thunk, Requires, Tag } from "${this.typesImportPath}";\n`,
+      );
+    }
+    this.write("\n");
 
     for (const stmt of ast.statements) {
       this.emitTopLevelStatement(stmt);
@@ -49,22 +67,55 @@ class Emitter {
 
   private emitTopLevelStatement(stmt: Statement): void {
     switch (stmt.kind) {
-      case "VariableStatement": {
-        this.write(`${stmt.declarationKind} `);
-        this.writeMapped(stmt.name.name, stmt.name.range);
-        this.write(" = ");
-        this.emitTopLevelExpression(stmt.initializer);
-        this.write(";\n");
+      case "VariableStatement":
+        this.emitVariableStatement(stmt);
         return;
-      }
       case "ExpressionStatement": {
         this.emitTopLevelExpression(stmt.expression);
         this.write(";\n");
         return;
       }
+      case "ProtocolDeclaration":
+        this.emitProtocolDeclaration(stmt);
+        return;
       case "ReturnStatement":
-        throw new Error("return is only valid inside thunk bodies (M0)");
+        throw new Error("return is only valid inside thunk bodies");
     }
+  }
+
+  private emitVariableStatement(stmt: VariableStatement): void {
+    this.write(`${stmt.declarationKind} `);
+    this.writeMapped(stmt.name.name, stmt.name.range);
+    if (stmt.typeAnnotation) {
+      this.write(": ");
+      this.emitTypeAnnotation(stmt.typeAnnotation);
+    }
+    this.write(" = ");
+    this.emitTopLevelExpression(stmt.initializer);
+    this.write(";\n");
+  }
+
+  private emitTypeAnnotation(ann: TypeAnnotation): void {
+    const { typeText } = encodeThunkTypeAnnotation(
+      ann.baseText,
+      ann.protocols,
+    );
+    this.writeMapped(typeText, ann.range);
+  }
+
+  private emitProtocolDeclaration(decl: ProtocolDeclaration): void {
+    const params = decl.typeParams ? `<${decl.typeParams}>` : "";
+    this.write(`/** protocol ${decl.name.name} */\n`);
+    for (const m of decl.members) {
+      const tp = m.typeParams && m.typeParams !== "<>" ? m.typeParams : "";
+      const alias = `${decl.name.name}_${m.name}`;
+      this.writeMapped(`type ${alias}${tp} = ${m.resultType};\n`, m.range);
+    }
+    this.writeMapped(
+      `type ${decl.name.name}${params} = { readonly __protocol: "${decl.name.name}" };\n`,
+      decl.name.range,
+    );
+    this.write("\n");
   }
 
   private emitTopLevelExpression(expr: Expression): void {
@@ -82,7 +133,6 @@ class Emitter {
   }
 
   private emitThunk(expr: ThunkExpression): void {
-    // Map only the `thunk` keyword span, not the whole body (avoids overlapping maps).
     const thunkKeyword: Range = {
       start: expr.range.start,
       end: {
@@ -133,7 +183,7 @@ class Emitter {
     ) {
       bindSource = runStmt.expression.expression;
     } else {
-      throw new Error("run must be in statement position (M0)");
+      throw new Error("run must be in statement position");
     }
 
     this.write("bind(");
@@ -192,6 +242,10 @@ class Emitter {
         }
         this.write(`${stmt.declarationKind} `);
         this.writeMapped(stmt.name.name, stmt.name.range);
+        if (stmt.typeAnnotation) {
+          this.write(": ");
+          this.emitTypeAnnotation(stmt.typeAnnotation);
+        }
         this.write(" = ");
         if (stmt.initializer.kind === "ThunkExpression") {
           this.emitThunk(stmt.initializer);
@@ -211,6 +265,8 @@ class Emitter {
         this.emitValueExpression(stmt.expression);
         this.write(");\n");
         return;
+      case "ProtocolDeclaration":
+        throw new Error("protocol declarations are only valid at top level");
     }
   }
 
@@ -267,18 +323,40 @@ function isRunBindingStatement(stmt: Statement): boolean {
   return false;
 }
 
+function fileNeedsTypesImport(ast: SourceFile): boolean {
+  for (const stmt of ast.statements) {
+    if (stmt.kind === "ProtocolDeclaration") return true;
+    if (stmt.kind === "VariableStatement" && stmt.typeAnnotation) {
+      const { needsTypesImport } = encodeThunkTypeAnnotation(
+        stmt.typeAnnotation.baseText,
+        stmt.typeAnnotation.protocols,
+      );
+      if (needsTypesImport || stmt.typeAnnotation.protocols.length > 0) {
+        return true;
+      }
+      if (/Thunk\s*</.test(stmt.typeAnnotation.baseText)) return true;
+    }
+  }
+  return false;
+}
+
 export function lowerSourceFile(
   ast: SourceFile,
-  options?: { runtimeImportPath?: string },
+  options?: LowerOptions,
 ): LoweredFile {
   const runtimeImportPath = options?.runtimeImportPath ?? "@thunk/runtime";
-  return new Emitter(ast.text, runtimeImportPath).emitFile(ast);
+  const typesImportPath = options?.typesImportPath ?? "@thunk/types";
+  return new Emitter(
+    ast.text,
+    runtimeImportPath,
+    typesImportPath,
+  ).emitFile(ast);
 }
 
 export function lowerThunkSource(
   text: string,
   fileName = "input.thunk",
-  options?: { runtimeImportPath?: string },
+  options?: LowerOptions,
 ): LoweredFile {
   return lowerSourceFile(parseThunkSource(text, fileName), options);
 }

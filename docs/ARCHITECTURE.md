@@ -151,7 +151,7 @@ Or an equivalent branded intersection. Exact spelling is an implementation detai
 
 Absent protocol entries use the protocol’s `succeed<>` identity (for `Requires`: `never`).
 
-**Status (typed core landed):** `@thunk/types` provides `Thunk`, `Requires`, `MergeProtocols`, `ExecuteResult` / `CompileError`. Runtime primitives are typed as returning `Thunk<T, P>`. Hover pretty-prints postfix form. Still missing: postfix syntax in `.thunk`, `protocol` declarations, `use` / `provide` / `Layer`.
+**Status:** Type carrier + `MergeProtocols` (simplified to `EmptyProtocols` when empty) + hover pretty-print are landed. Postfix `Requires`/`Once` in `.thunk`, `protocol` declarations, and `Tag`/`use`/`Layer`/`provide` are landed. See `FEATURES.md` and `examples/requires.thunk`.
 
 ---
 
@@ -304,13 +304,11 @@ See `LANGUAGE.md` §§6–8. Grow the M0 lowerer/parser without protocols yet.
 
 ### M3 — Protocol bag encoding + `Requires`
 
-- Postfix protocol syntax in types.
-- Infer `Requires` through `bind`.
-- Reject `execute` when requirements remain (`CompileError` encoding).
+**Status: largely done** (type-level + postfix surface + pretty hover). Remaining polish: richer protocol declaration wiring beyond emitted type aliases.
 
 ### M4 — `use` / `provide` / `Layer`
 
-- Runtime environment + typed removal of requirements.
+**Status: done** for the initial tagged-env model (`createTag`, `use`, `layerOf`, `provide`, env-aware `execute`). See `examples/requires.thunk`.
 
 ---
 

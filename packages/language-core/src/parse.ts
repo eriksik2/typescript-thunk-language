@@ -8,10 +8,14 @@
 import type {
   Expression,
   Identifier,
+  ProtocolClause,
+  ProtocolDeclaration,
+  ProtocolTypeFunction,
   SourceFile,
   Statement,
   ThunkExpression,
   TsExpression,
+  TypeAnnotation,
 } from "./ast";
 import { offsetToPosition, type Range } from "./source-map";
 
@@ -50,6 +54,10 @@ class Parser {
   private parseStatement(): Statement {
     const start = this.pos;
 
+    if (this.peekKeyword("protocol")) {
+      return this.parseProtocolDeclaration(start);
+    }
+
     if (this.peekKeyword("return")) {
       this.matchKeyword("return");
       this.skipTrivia();
@@ -68,6 +76,13 @@ class Parser {
       this.skipTrivia();
       const name = this.parseIdentifier();
       this.skipTrivia();
+      let typeAnnotation: TypeAnnotation | undefined;
+      if (this.peek() === ":") {
+        this.pos++;
+        this.skipTrivia();
+        typeAnnotation = this.parseTypeAnnotation();
+        this.skipTrivia();
+      }
       this.expect("=");
       this.skipTrivia();
       const initializer = this.parseExpression();
@@ -77,6 +92,7 @@ class Parser {
         range: this.range(start, this.pos),
         declarationKind,
         name,
+        typeAnnotation,
         initializer,
       };
     }
@@ -88,6 +104,246 @@ class Parser {
       range: this.range(start, this.pos),
       expression,
     };
+  }
+
+  /**
+   * Type annotation: base TS type + optional postfix `Requires(...)` / `Once`.
+   */
+  private parseTypeAnnotation(): TypeAnnotation {
+    const start = this.pos;
+    const baseText = this.consumeTypeBase();
+    this.skipTrivia();
+    const protocols: ProtocolClause[] = [];
+    while (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+      protocols.push(this.parseProtocolClause());
+      this.skipTrivia();
+    }
+    const end = this.pos;
+    return {
+      baseText: baseText.trim(),
+      protocols,
+      range: this.range(start, end),
+    };
+  }
+
+  /** Consume type text until postfix protocol keyword or `=` at depth 0. */
+  private consumeTypeBase(): string {
+    const start = this.pos;
+    let depthParen = 0;
+    let depthBrace = 0;
+    let depthAngle = 0;
+    let depthBracket = 0;
+
+    while (!this.eof()) {
+      this.skipSpaces();
+      if (
+        depthParen === 0 &&
+        depthBrace === 0 &&
+        depthAngle === 0 &&
+        depthBracket === 0
+      ) {
+        if (this.peek() === "=") break;
+        if (this.peek() === "\n") {
+          // Look ahead: newline then Requires/Once continues annotation;
+          // newline then = or other statement ends base (protocols parsed after).
+          const save = this.pos;
+          this.pos++;
+          this.skipTrivia();
+          if (this.peekKeyword("Requires") || this.peekKeyword("Once")) {
+            this.pos = save;
+            break;
+          }
+          if (this.peek() === "=") {
+            this.pos = save;
+            break;
+          }
+          this.pos = save;
+        }
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once")) break;
+      }
+
+      const c = this.peek();
+      if (c === "\n" && depthParen === 0 && depthBrace === 0 && depthAngle === 0) {
+        // include newline in base only if continuing type (generics rarely span);
+        // stop before postfix protocols (handled above)
+        const save = this.pos;
+        this.pos++;
+        this.skipTrivia();
+        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peek() === "=") {
+          this.pos = save;
+          break;
+        }
+        this.pos = save;
+      }
+
+      if (c === "(") depthParen++;
+      else if (c === ")") {
+        if (depthParen === 0) break;
+        depthParen--;
+      } else if (c === "{") depthBrace++;
+      else if (c === "}") {
+        if (depthBrace === 0) break;
+        depthBrace--;
+      } else if (c === "<") depthAngle++;
+      else if (c === ">") {
+        if (depthAngle === 0) break;
+        depthAngle--;
+      } else if (c === "[") depthBracket++;
+      else if (c === "]") {
+        if (depthBracket === 0) break;
+        depthBracket--;
+      } else if (c === '"' || c === "'" || c === "`") {
+        this.consumeString(c);
+        continue;
+      } else if (c === ";" && depthParen === 0 && depthBrace === 0) {
+        break;
+      }
+      this.pos++;
+    }
+
+    const raw = this.text.slice(start, this.pos);
+    const trimmed = raw.trimEnd();
+    if (!trimmed) {
+      throw new ParseError("expected type", start);
+    }
+    this.pos = start + trimmed.length;
+    return trimmed;
+  }
+
+  private parseProtocolClause(): ProtocolClause {
+    const start = this.pos;
+    if (this.matchKeyword("Requires")) {
+      this.skipTrivia();
+      this.expect("(");
+      const payloadStart = this.pos;
+      let depth = 1;
+      while (!this.eof() && depth > 0) {
+        const c = this.peek();
+        if (c === "(") depth++;
+        else if (c === ")") {
+          depth--;
+          if (depth === 0) break;
+        } else if (c === '"' || c === "'" || c === "`") {
+          this.consumeString(c);
+          continue;
+        }
+        this.pos++;
+      }
+      const payload = this.text.slice(payloadStart, this.pos).trim();
+      this.expect(")");
+      return {
+        name: "Requires",
+        payload,
+        range: this.range(start, this.pos),
+      };
+    }
+    if (this.matchKeyword("Once")) {
+      return {
+        name: "Once",
+        range: this.range(start, this.pos),
+      };
+    }
+    throw new ParseError("expected protocol clause", this.pos);
+  }
+
+  private parseProtocolDeclaration(start: number): ProtocolDeclaration {
+    this.matchKeyword("protocol");
+    this.skipTrivia();
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+    let typeParams = "";
+    if (this.peek() === "<") {
+      typeParams = this.consumeBalanced("<", ">");
+    }
+    this.skipTrivia();
+    this.expect("{");
+    this.skipTrivia();
+    const members: ProtocolTypeFunction[] = [];
+    while (!this.eof() && this.peek() !== "}") {
+      members.push(this.parseProtocolMember());
+      this.skipTrivia();
+    }
+    this.expect("}");
+    return {
+      kind: "ProtocolDeclaration",
+      range: this.range(start, this.pos),
+      name,
+      typeParams: typeParams.replace(/^</, "").replace(/>$/, "").trim(),
+      members,
+    };
+  }
+
+  private parseProtocolMember(): ProtocolTypeFunction {
+    const start = this.pos;
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+    let typeParams = "";
+    if (this.peek() === "<") {
+      typeParams = this.consumeBalanced("<", ">");
+    }
+    this.skipTrivia();
+    this.expect(":");
+    this.skipTrivia();
+    const resultStart = this.pos;
+    // Result type until `;` or newline at depth 0
+    let depthAngle = 0;
+    let depthBrace = 0;
+    let depthParen = 0;
+    while (!this.eof()) {
+      const c = this.peek();
+      if (
+        depthAngle === 0 &&
+        depthBrace === 0 &&
+        depthParen === 0 &&
+        (c === ";" || c === "\n" || c === "}")
+      ) {
+        break;
+      }
+      if (c === "<") depthAngle++;
+      else if (c === ">") depthAngle--;
+      else if (c === "{") depthBrace++;
+      else if (c === "}") {
+        if (depthBrace === 0) break;
+        depthBrace--;
+      } else if (c === "(") depthParen++;
+      else if (c === ")") depthParen--;
+      else if (c === '"' || c === "'" || c === "`") {
+        this.consumeString(c);
+        continue;
+      }
+      this.pos++;
+    }
+    const resultType = this.text.slice(resultStart, this.pos).trim();
+    this.skipSpaces();
+    if (this.peek() === ";") this.pos++;
+    return {
+      name: name.name,
+      typeParams,
+      resultType,
+      range: this.range(start, this.pos),
+    };
+  }
+
+  private consumeBalanced(open: string, close: string): string {
+    const start = this.pos;
+    this.expect(open);
+    let depth = 1;
+    while (!this.eof() && depth > 0) {
+      const c = this.peek();
+      if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          this.pos++;
+          break;
+        }
+      } else if (c === '"' || c === "'" || c === "`") {
+        this.consumeString(c);
+        continue;
+      }
+      if (depth > 0) this.pos++;
+    }
+    return this.text.slice(start, this.pos);
   }
 
   private parseExpression(): Expression {

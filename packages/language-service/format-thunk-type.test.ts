@@ -46,6 +46,14 @@ describe("formatThunkDisplayString", () => {
     );
   });
 
+  test("Omit<EmptyProtocols, typeof Requires> is treated as empty", () => {
+    expect(
+      formatThunkDisplayString(
+        "const program: Thunk<number, Omit<EmptyProtocols, typeof Requires>>",
+      ),
+    ).toBe("const program: Thunk<number>");
+  });
+
   test("rewrites inside markdown fence body", () => {
     const input = "```typescript\nconst x: Thunk<number, EmptyProtocols>\n```";
     expect(formatThunkDisplayString(input)).toBe(

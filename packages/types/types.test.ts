@@ -48,6 +48,7 @@ describe("@thunk/types", () => {
   test("MergeProtocols merges Requires and drops empty Requires", () => {
     type Pure = MergeProtocols<EmptyProtocols, EmptyProtocols>;
     type PureReq = ExpectEqual<GetRequires<Pure>, never>;
+    type PureIsEmpty = ExpectEqual<Pure, EmptyProtocols>;
 
     type Left = MergeProtocols<WithRequires<"Db">, EmptyProtocols>;
     type LeftReq = ExpectEqual<GetRequires<Left>, "Db">;
@@ -56,9 +57,10 @@ describe("@thunk/types", () => {
     type BothReq = ExpectEqual<GetRequires<Both>, "Db" | "Log">;
 
     const _p: PureReq = true;
+    const _pe: PureIsEmpty = true;
     const _l: LeftReq = true;
     const _b: BothReq = true;
-    expect(_p && _l && _b).toBe(true);
+    expect(_p && _pe && _l && _b).toBe(true);
   });
 
   test("ExecuteResult: pure ok, requirements → CompileError", () => {

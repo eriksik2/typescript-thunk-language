@@ -1,12 +1,12 @@
 /**
- * Minimal Thunk AST for M0.
+ * Thunk AST.
  *
  * Supported:
- *   const name = thunk { ... }
+ *   const name [: Type Requires(...) Once] = thunk { ... }
  *   const name = run expr
- *   run expr                      (expression statement / top-level)
+ *   run expr
  *   return expr
- *   let/const name = expr
+ *   protocol Name<...> { bind<A,B>: ...; ... }
  *
  * Expressions are kept as raw TypeScript text + span (hybrid strategy).
  */
@@ -23,13 +23,29 @@ export interface SourceFile {
 export type Statement =
   | VariableStatement
   | ReturnStatement
-  | ExpressionStatement;
+  | ExpressionStatement
+  | ProtocolDeclaration;
+
+export interface ProtocolClause {
+  readonly name: string;
+  /** Type text inside Requires(...); omitted for flag protocols like Once. */
+  readonly payload?: string;
+  readonly range: Range;
+}
+
+export interface TypeAnnotation {
+  /** Base type text before postfix protocols (e.g. `Thunk<User>`). */
+  readonly baseText: string;
+  readonly protocols: readonly ProtocolClause[];
+  readonly range: Range;
+}
 
 export interface VariableStatement {
   readonly kind: "VariableStatement";
   readonly range: Range;
   readonly declarationKind: "const" | "let";
   readonly name: Identifier;
+  readonly typeAnnotation?: TypeAnnotation;
   readonly initializer: Expression;
 }
 
@@ -43,6 +59,22 @@ export interface ExpressionStatement {
   readonly kind: "ExpressionStatement";
   readonly range: Range;
   readonly expression: Expression;
+}
+
+export interface ProtocolTypeFunction {
+  readonly name: string;
+  readonly typeParams: string;
+  readonly resultType: string;
+  readonly range: Range;
+}
+
+export interface ProtocolDeclaration {
+  readonly kind: "ProtocolDeclaration";
+  readonly range: Range;
+  readonly name: Identifier;
+  /** Raw generic params text, e.g. `Tags extends Tag<any>`, or empty. */
+  readonly typeParams: string;
+  readonly members: readonly ProtocolTypeFunction[];
 }
 
 export type Expression =

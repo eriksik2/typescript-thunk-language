@@ -621,8 +621,8 @@ transform(value, a, b)
 
 | | |
 |---|---|
-| **Status** | **Partial** — encoding + pretty-print **Done**; `.thunk` surface syntax **Not started** |
-| **Milestone** | Encoding now · surface **M3** |
+| **Status** | **Done** (encoding + pretty-print + `.thunk` postfix parse/lower) |
+| **Milestone** | M3 |
 
 **What it is.**
 
@@ -638,7 +638,7 @@ Thunk<User>
 |---|---|
 | Multiple postfix entries | One bag; duplicates merge per protocol |
 | Hover | Pretty-printer shows postfix form from `Thunk<T, ProtocolBag<…>>` encoding |
-| Writing postfix in `.thunk` | Not parsed yet — use typed TS/`WithRequires` until M3 |
+| Writing postfix in `.thunk` | Parsed and lowered to `Thunk<T, { [Requires]: … }>` |
 
 ---
 
@@ -646,8 +646,8 @@ Thunk<User>
 
 | | |
 |---|---|
-| **Status** | **Partial** — `MergeProtocols` / `RequiresBind` in `@thunk/types` (via `bind` signature) |
-| **Milestone** | Type-level now · front-end surface normalize **M3** |
+| **Status** | **Done** for `Requires` (`MergeProtocols` / postfix encode merge) |
+| **Milestone** | Typed core + postfix |
 
 **What it is.** Protocol-aware merge — **not** TS intersection of duplicate keys.
 
@@ -664,8 +664,8 @@ Thunk<User>
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M3** |
+| **Status** | **Partial** — parse + lower to `Name_bind` / `Name_execute` type aliases |
+| **Milestone** | M3 |
 
 **What it should look like.**
 
@@ -765,8 +765,8 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 | | |
 |---|---|
-| **Status** | **Partial** — type-level merge + `ExecuteResult` / `CompileError`; no surface/`use` yet |
-| **Milestone** | Type-level now · full **M3–M4** |
+| **Status** | **Done** (type-level + postfix + `use`/`provide`) |
+| **Milestone** | M3–M4 |
 
 **What it is.** Accumulate requirements on `bind`; reject `execute` if payload ≠ `never`.
 
@@ -777,6 +777,7 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 | `ExecuteResult<T, EmptyProtocols>` | `T` |
 | `ExecuteResult<T, WithRequires<Database>>` | `CompileError<\`Unsatisfied requirements\`>` |
 | Pure `succeed(1)` | No requirements |
+| `examples/requires.thunk` | `use` + `provide` + `run` |
 
 ---
 
@@ -784,20 +785,20 @@ See LANGUAGE §16. Must not block M3 `Requires`.
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M4** |
+| **Status** | **Done** (`createTag`) |
+| **Milestone** | M4 |
 
 **What it should look like.**
 
 ```ts
-const Database: Tag<DatabaseService>
+const Database = createTag<DatabaseService>("Database")
 ```
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| Tag | Compile-time service type + runtime key |
+| Tag | Compile-time service type + runtime `symbol` key |
 
 ---
 
@@ -805,13 +806,13 @@ const Database: Tag<DatabaseService>
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M4** |
+| **Status** | **Done** |
+| **Milestone** | M4 |
 
 **What it should look like.**
 
 ```ts
-function use<T extends Tag<any>>(tag: T): Thunk<Infer<T>> Requires(T)
+function use<T extends Tag<any>>(tag: T): Thunk<InferTag<T>> Requires(T)
 ```
 
 **Cases**
@@ -827,13 +828,13 @@ function use<T extends Tag<any>>(tag: T): Thunk<Infer<T>> Requires(T)
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M4** |
+| **Status** | **Done** (`layerOf` / `mergeLayers`) |
+| **Milestone** | M4 |
 
 **What it should look like.**
 
 ```ts
-Layer<Database | Logger>
+layerOf(Database, liveDatabase)
 ```
 
 **Cases**
@@ -848,8 +849,8 @@ Layer<Database | Logger>
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M4** |
+| **Status** | **Done** |
+| **Milestone** | M4 |
 
 **What it should look like.**
 
@@ -861,7 +862,7 @@ provide(thunk, layer)  // removes provided Requires; preserves other protocols
 
 | Example | Expected |
 |---|---|
-| Input `Requires(Database \| Logger) Once` + `Layer<Database>` | `Requires(Logger) Once` |
+| Input `Requires(Database \| Logger)` + `Layer<Database>` | `Requires(Logger)` (type-level `ProvideRequires`) |
 | Runtime | Extend env, run inner, restore |
 
 ---
@@ -870,10 +871,10 @@ provide(thunk, layer)  // removes provided Requires; preserves other protocols
 
 | | |
 |---|---|
-| **Status** | **Not started** |
-| **Milestone** | **M4** |
+| **Status** | **Done** |
+| **Milestone** | M4 |
 
-**Current runtime.** Only `succeed` \| `defer` \| `bind`. No env, `use`, or `provide` nodes.
+Tagged nodes: `succeed` \| `defer` \| `bind` \| `use` \| `provide` with `Map` environment.
 
 ---
 
@@ -1057,14 +1058,14 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Nested `run` expressions | Limited | later |
 | Pipe `\|` | Not started | **M2** |
 | Pipe + `run` precedence | Not started | **M2** |
-| Postfix protocol syntax | Not started | **M3** |
-| Protocol normalization / inference | Partial (type-level `MergeProtocols`) | **M3** surface |
-| `protocol` declarations | Not started | **M3** |
-| `Requires` + `CompileError` on execute | Partial (type-level) | **M3–M4** |
-| `Tag` / `use` / `Layer` / `provide` | Not started | **M4** |
+| Postfix protocol syntax | Done | M3 |
+| Protocol normalization / inference | Done (`Requires`) | M3 |
+| `protocol` declarations | Partial (aliases emitted) | M3 |
+| `Requires` + `CompileError` on execute | Done | M3–M4 |
+| `Tag` / `use` / `Layer` / `provide` | Done | M4 |
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
-| Hover pretty protocols | Done | Typed core |
+| Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
 | Errors / async / concurrency / resources / … | Deferred | later |
 
-**Next implementation focus:** M2 (pipes / multi-`run`) and/or M3 surface postfix syntax + `use`/`provide` on top of the typed `Requires` core.
+**Next implementation focus:** M2 (pipes / multi-`run` hardening); deepen `protocol` decls so generated type functions drive merge instead of hard-coded `Requires` only.

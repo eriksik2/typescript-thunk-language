@@ -1,0 +1,20 @@
+// Example: Requires + use / provide (type-checked via lowering in editor)
+
+const Database = createTag<{ name: string }>("Database")
+
+symbol Database {
+
+};
+
+ 
+const fetchUser = thunk {
+  const db = run use(Database)
+  return db.name
+}
+
+const program: Thunk<string> = provide(
+  fetchUser,
+  layerOf(Database, { name: "ada" }),
+)
+
+const result = run program

@@ -12,6 +12,52 @@
 const EMPTY_BAG =
   /^(EmptyProtocols|\{\s*\}|Record<PropertyKey,\s*unknown>|object)$/;
 
+/** `Omit<EmptyProtocols, …>` / `Omit<{}, …>` noise from MergeProtocols before SimplifyEmpty. */
+const OMIT_EMPTY_BAG =
+  /^Omit<\s*(EmptyProtocols|\{\s*\})\s*,[\s\S]+>$/;
+
+/** Intersection of only empty-like pieces (rare TS display forms). */
+function isEmptyLikeBag(bag: string): boolean {
+  const trimmed = bag.trim();
+  if (!trimmed || EMPTY_BAG.test(trimmed)) return true;
+  if (OMIT_EMPTY_BAG.test(trimmed)) return true;
+  // A & B where every top-level part is empty-like
+  if (trimmed.includes("&")) {
+    const parts = splitTopLevelIntersect(trimmed);
+    return parts.length > 0 && parts.every(isEmptyLikeBag);
+  }
+  return false;
+}
+
+function splitTopLevelIntersect(text: string): string[] {
+  const parts: string[] = [];
+  let depthAngle = 0;
+  let depthBrace = 0;
+  let depthParen = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === "<") depthAngle++;
+    else if (c === ">") depthAngle--;
+    else if (c === "{") depthBrace++;
+    else if (c === "}") depthBrace--;
+    else if (c === "(") depthParen++;
+    else if (c === ")") depthParen--;
+    else if (
+      c === "&" &&
+      depthAngle === 0 &&
+      depthBrace === 0 &&
+      depthParen === 0
+    ) {
+      parts.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const last = text.slice(start).trim();
+  if (last) parts.push(last);
+  return parts;
+}
+
 /**
  * Split `a, b, c` on top-level commas (angle/brace/paren aware).
  */
@@ -90,7 +136,7 @@ interface ProtocolEntry {
  */
 export function parseProtocolBag(bag: string): ProtocolEntry[] {
   const trimmed = bag.trim();
-  if (!trimmed || EMPTY_BAG.test(trimmed)) return [];
+  if (isEmptyLikeBag(trimmed)) return [];
 
   // Object type: { ... }
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -99,7 +145,7 @@ export function parseProtocolBag(bag: string): ProtocolEntry[] {
     return parseObjectMembers(body);
   }
 
-  // Fallback: unknown bag — show as opaque Protocol(...) only if non-empty
+  // Fallback: unknown non-empty bag — opaque line (avoid for empty Omit noise)
   return [{ name: "Protocols", payload: trimmed }];
 }
 
