@@ -37,10 +37,13 @@ const t: Thunk<number> Async = wrap(() => Promise.resolve(1))
 
 `Requires` still wins for validity: unsatisfied requirements → `CompileError` even if `Async` is present.
 
+A thunk carrying `Async` is **not** assignable to plain `Thunk<T>` (protocol bags are invariant). Annotate with postfix `Async` when the async flag must be preserved.
+
 ## Related
 
 - [wrap](../core/wrap.md)
 - [run](../core/run.md)
 - [Protocols overview](./protocols-overview.md)
 - [Requires](./requires.md)
+- [Thunk type](./thunk-type.md)
 - [Failure hierarchy](../symbols/failure-hierarchy.md) — rejections → `UnhandledError`

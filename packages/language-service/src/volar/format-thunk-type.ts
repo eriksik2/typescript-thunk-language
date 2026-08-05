@@ -204,7 +204,10 @@ export function parseProtocolBag(bag: string): ProtocolEntry[] {
 }
 
 function parseObjectMembers(body: string): ProtocolEntry[] {
-  const members = splitTopLevelArgs(body);
+  // TypeScript may separate members with `;` (and leave a trailing one).
+  // Normalize to commas so splitTopLevelArgs can partition them.
+  const normalized = body.replace(/;/g, ",");
+  const members = splitTopLevelArgs(normalized);
   const entries: ProtocolEntry[] = [];
 
   for (const raw of members) {
@@ -231,8 +234,11 @@ function parseObjectMembers(body: string): ProtocolEntry[] {
 }
 
 function entryFromKey(key: string, payload: string): ProtocolEntry {
-  const cleaned = payload.replace(/\s+/g, " ").trim();
-  // void / undefined → flag-style protocol (Once)
+  const cleaned = payload
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/;+\s*$/g, "");
+  // void / undefined → flag-style protocol (Once / Async)
   if (cleaned === "void" || cleaned === "undefined") {
     return { name: key };
   }
@@ -317,10 +323,12 @@ function collapseRequiresPayloadPart(part: string): string {
 
 /**
  * Format `Thunk<Yield, Bag>` → surface multiline string (no const/prefix).
+ * Nested `Thunk<…>` yield types are pretty-printed compactly inline
+ * (`Thunk<Thunk<boolean> Async>`).
  */
 export function formatThunkType(yieldType: string, bag: string): string {
   const protocols = parseProtocolBag(bag);
-  const head = `Thunk<${yieldType.trim()}>`;
+  const head = `Thunk<${prettyNestedYieldType(yieldType.trim())}>`;
   if (protocols.length === 0) return head;
 
   const lines = [head];
@@ -332,6 +340,32 @@ export function formatThunkType(yieldType: string, bag: string): string {
     }
   }
   return lines.join("\n");
+}
+
+/** Compact `Thunk<T> Requires(A) Async` for nested yield positions. */
+export function formatThunkTypeCompact(yieldType: string, bag: string): string {
+  const protocols = parseProtocolBag(bag);
+  let s = `Thunk<${prettyNestedYieldType(yieldType.trim())}>`;
+  for (const p of protocols) {
+    if (p.payload === undefined) s += ` ${p.name}`;
+    else s += ` ${p.name}(${p.payload})`;
+  }
+  return s;
+}
+
+/**
+ * Recursively rewrite a yield-type string that may itself be `Thunk<Y, Bag>`.
+ */
+function prettyNestedYieldType(yieldType: string): string {
+  const trimmed = yieldType.trim();
+  const span = findThunkTypeSpan(trimmed);
+  if (!span || span.start !== 0 || span.end !== trimmed.length) {
+    // Not a single top-level Thunk — still rewrite any inner spans.
+    return formatThunkDisplayStringCompact(trimmed);
+  }
+  const args = splitTopLevelArgs(span.inner);
+  if (args.length === 0) return trimmed;
+  return formatThunkTypeCompact(args[0]!, args[1] ?? "EmptyProtocols");
 }
 
 /**
@@ -348,6 +382,21 @@ export function formatThunkDisplayString(display: string): string {
   const bag = args[1] ?? "EmptyProtocols";
   const pretty = formatThunkType(yieldType, bag);
 
+  return display.slice(0, span.start) + pretty + display.slice(span.end);
+}
+
+/** Like formatThunkDisplayString but keeps nested/rewritten forms compact. */
+function formatThunkDisplayStringCompact(display: string): string {
+  const span = findThunkTypeSpan(display);
+  if (!span) return display;
+
+  const args = splitTopLevelArgs(span.inner);
+  if (args.length === 0) return display;
+
+  const pretty = formatThunkTypeCompact(
+    args[0]!,
+    args[1] ?? "EmptyProtocols",
+  );
   return display.slice(0, span.start) + pretty + display.slice(span.end);
 }
 

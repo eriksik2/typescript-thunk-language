@@ -36,12 +36,31 @@ export type Async = typeof Async;
  * Second parameter defaults so pure thunks display as `Thunk<T>`.
  *
  * Opaque brand: runtime values are tagged nodes cast to this type.
+ *
+ * `__protocolInvariant` makes `P` invariant. Without it, `EmptyProtocols`
+ * (`{}`) structurally accepts any bag, so `Thunk<T> Requires(X)` / `Async`
+ * would incorrectly assign to plain `Thunk<T>`.
  */
 export type Thunk<T, P extends ProtocolBag = EmptyProtocols> = {
   readonly __thunkBrand: unique symbol;
   readonly __yield: T;
   readonly __protocols: P;
+  readonly __protocolInvariant: (protocols: P) => P;
 };
+
+/**
+ * Widen primitive literals the way a `let` binding does, for hoisted
+ * state-machine locals inferred from their initializers.
+ */
+export type InferLet<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends boolean
+      ? boolean
+      : T extends bigint
+        ? bigint
+        : T;
 
 /**
  * Symbol identity typed by associated payload `T`

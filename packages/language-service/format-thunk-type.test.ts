@@ -56,6 +56,21 @@ describe("formatThunkType", () => {
     );
   });
 
+  test("Async flag with trailing semicolon (TS printer)", () => {
+    expect(formatThunkType("boolean", "{ readonly [Async]: void; }")).toBe(
+      "Thunk<boolean>\n  Async",
+    );
+  });
+
+  test("nested Thunk yield → compact inline protocols", () => {
+    expect(
+      formatThunkType(
+        "Thunk<boolean, { readonly [Async]: void; }>",
+        "EmptyProtocols",
+      ),
+    ).toBe("Thunk<Thunk<boolean> Async>");
+  });
+
   test("Requires + Once together", () => {
     expect(
       formatThunkType(
