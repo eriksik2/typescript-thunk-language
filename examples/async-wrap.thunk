@@ -25,7 +25,7 @@ const program = thunk {
 const programAsFn = async () => {
   let tries = 0;
   while (true) {
-    const res = await run wrap(() => promiseFn())
+    const res = await promiseFn()
     if (res) return tries
     tries++
     if (tries > 20) return tries
