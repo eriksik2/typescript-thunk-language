@@ -13,7 +13,7 @@ function promiseFn(): Promise<boolean> {
 }
 
 const program = thunk {
-  let tries: number = 0
+  let tries = 0
   while (true) {
     const res = run wrap(() => promiseFn())
     if (res) return tries
@@ -23,7 +23,7 @@ const program = thunk {
 }
 
 const programAsFn = async () => {
-  let tries: number = 0;
+  let tries = 0;
   while (true) {
     const res = await run wrap(() => promiseFn())
     if (res) return tries
