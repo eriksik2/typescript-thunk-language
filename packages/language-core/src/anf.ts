@@ -205,6 +205,7 @@ function expressionContainsRun(expr: Expression): boolean {
     case "RunExpression":
       return true;
     case "PipeExpression":
+    case "AndExpression":
       return (
         expressionContainsRun(expr.left) ||
         expressionContainsRun(expr.right)
@@ -214,6 +215,8 @@ function expressionContainsRun(expr: Expression): boolean {
         expressionContainsRun(expr.scrutinee) ||
         expr.arms.some((a) => expressionContainsRun(a.expression))
       );
+    case "IsExpression":
+      return expressionContainsRun(expr.scrutinee);
     case "ThunkExpression":
       return false;
     case "Identifier":
@@ -235,6 +238,10 @@ function conditionText(expr: Expression): string {
       return `run ${conditionText(expr.expression)}`;
     case "PipeExpression":
       return `(${conditionText(expr.left)} | ${conditionText(expr.right)})`;
+    case "AndExpression":
+      return `(${conditionText(expr.left)} && ${conditionText(expr.right)})`;
+    case "IsExpression":
+      return `${conditionText(expr.scrutinee)} is …`;
     case "MatchExpression":
       return `match (…)`;
     case "ThunkExpression":
@@ -270,6 +277,7 @@ function liftRuns(
       return id;
     }
     case "PipeExpression":
+    case "AndExpression":
       return {
         ...expr,
         left: liftRuns(expr.left, false, lifted, ctx),
@@ -277,6 +285,11 @@ function liftRuns(
       };
     case "MatchExpression":
       // Lift only the scrutinee. Arms must not contain `run` (v1).
+      return {
+        ...expr,
+        scrutinee: liftRuns(expr.scrutinee, false, lifted, ctx),
+      };
+    case "IsExpression":
       return {
         ...expr,
         scrutinee: liftRuns(expr.scrutinee, false, lifted, ctx),

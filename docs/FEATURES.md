@@ -1159,6 +1159,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Pipe `\|` | Done | **M2** |
 | Pipe + `run` precedence | Done | **M2** |
 | `match` (exact leaf + exhaustiveness) | Done (v1) | **M2** |
+| `is` pattern test (`if (x is Err: infer e)`) | Done | **M2** |
 | `Result` / `Ok` / `Err` | Done (values) | **M2** |
 | Generic `symbol Name<A>` | Done | **M2** |
 | Postfix protocol syntax | Done | M3 |

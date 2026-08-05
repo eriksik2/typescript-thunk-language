@@ -37,5 +37,6 @@ type AppErr = NotFound | Conflict
 ## Related
 
 - [match](../core/match.md)
+- [is](../core/is.md)
 - [Failure hierarchy](../symbols/failure-hierarchy.md)
 - [symbol declarations](../symbols/symbol-declarations.md)
