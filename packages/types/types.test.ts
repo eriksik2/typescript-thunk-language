@@ -11,6 +11,7 @@ import type {
   GetRequires,
   HasAsync,
   IdentityCarrier,
+  InferLet,
   MergeProtocols,
   Protocol,
   Requires,
@@ -112,6 +113,37 @@ describe("@thunk/types", () => {
     const _s: S = true;
     const _sr: SReq = true;
     expect(_y && _p && _s && _sr).toBe(true);
+  });
+
+  test("Thunk protocol bags are not absorbed by EmptyProtocols", () => {
+    type Req = Thunk<string, WithRequires<"Db">>;
+    type Pure = Thunk<string, EmptyProtocols>;
+    type AsyncT = Thunk<number, WithAsync>;
+
+    type ReqToPure = Req extends Pure ? true : false;
+    type AsyncToPure = AsyncT extends Pure ? true : false;
+    type PureToPure = Pure extends Pure ? true : false;
+
+    type ReqHidden = ExpectEqual<ReqToPure, false>;
+    type AsyncHidden = ExpectEqual<AsyncToPure, false>;
+    type PureOk = ExpectEqual<PureToPure, true>;
+
+    const _r: ReqHidden = true;
+    const _a: AsyncHidden = true;
+    const _p: PureOk = true;
+    expect(_r && _a && _p).toBe(true);
+  });
+
+  test("InferLet widens primitive literals", () => {
+    type N = ExpectEqual<InferLet<0>, number>;
+    type S = ExpectEqual<InferLet<"hi">, string>;
+    type B = ExpectEqual<InferLet<true>, boolean>;
+    type Obj = ExpectEqual<InferLet<{ a: 1 }>, { a: 1 }>;
+    const _n: N = true;
+    const _s: S = true;
+    const _b: B = true;
+    const _o: Obj = true;
+    expect(_n && _s && _b && _o).toBe(true);
   });
 
   test("Requires symbol is usable as a bag key type", () => {

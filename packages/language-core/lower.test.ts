@@ -245,7 +245,9 @@ const x = use
     expect(lowered.generatedText).toContain(
       "return runEffect(provide(fetchUser, db))",
     );
-    expect(lowered.generatedText).toContain("return succeed(__resume)");
+    expect(lowered.generatedText).toMatch(
+      /return succeed\(__resume as ThunkReturnType<NonNullable<typeof __t\d+>>\);/,
+    );
     expect(lowered.generatedText).not.toContain("succeed(execute(");
     expect(lowered.generatedText).not.toContain("bind(");
   });
@@ -272,6 +274,55 @@ const x = use
     expect(lowered.generatedText).toMatch(/if \(v === 0\)/);
     expect(lowered.generatedText).toMatch(/if \(total > 10\)/);
     expect(lowered.generatedText).not.toContain("bind(");
+    // Unannotated ordinary locals get InferLet witnesses (not bare `let total;`)
+    expect(lowered.generatedText).toMatch(/InferLet/);
+    expect(lowered.generatedText).toMatch(/import type \{[^}]*\bInferLet\b/);
+  });
+
+  test("postfix ++ does not swallow the next if/return statements", () => {
+    const source = `const program = thunk {
+  let tries = 0
+  while (true) {
+    const x = run step()
+    tries++
+    if (tries > 20) return tries
+  }
+}
+`;
+    const ast = parseThunkSource(source);
+    const thunk = (ast.statements[0] as { initializer: { body: unknown[] } })
+      .initializer;
+    const whileStmt = thunk.body[1] as {
+      kind: string;
+      body: { statements: { kind: string; expression?: { text?: string } }[] };
+    };
+    expect(whileStmt.kind).toBe("WhileStatement");
+    const stmts = whileStmt.body.statements;
+    expect(stmts.some((s) => s.kind === "ExpressionStatement")).toBe(true);
+    expect(stmts.some((s) => s.kind === "IfStatement")).toBe(true);
+    const expr = stmts.find((s) => s.kind === "ExpressionStatement");
+    expect(expr?.expression?.text).toBe("tries++");
+
+    const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain("tries++;");
+    expect(lowered.generatedText).toMatch(/if \(tries > 20\)/);
+    expect(lowered.generatedText).toContain("return succeed(tries)");
+    expect(lowered.generatedText).not.toMatch(
+      /tries\+\+[\s\S]*if \(tries > 20\) return tries/,
+    );
+  });
+
+  test("return run lower casts resume yield (not bare __resume)", () => {
+    const lowered = lowerThunkSource(`const program = thunk {
+  return run wrap(() => Promise.resolve(true))
+}
+`);
+    expect(lowered.generatedText).toMatch(
+      /return succeed\(__resume as ThunkReturnType<NonNullable<typeof __t\d+>>\);/,
+    );
+    expect(lowered.generatedText).not.toMatch(
+      /return succeed\(__resume\);/,
+    );
   });
 
   test("symbol name mappings land on generated Database identifier", () => {

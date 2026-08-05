@@ -1185,6 +1185,10 @@ class Parser {
     const t = tail.replace(/\s+$/u, "");
     if (!t) return false;
     if (t.endsWith("=>")) return true;
+    // Postfix ++/-- are complete expressions — do not treat the final
+    // `+`/`-` as a binary operator waiting for a RHS on the next line
+    // (`tries++\nif (…) return …` must be two statements).
+    if (t.endsWith("++") || t.endsWith("--")) return false;
     const last = t[t.length - 1]!;
     return "=(,+-*/%<>!?&|:.[".includes(last);
   }

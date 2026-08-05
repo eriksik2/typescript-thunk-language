@@ -61,7 +61,7 @@ type Terminator =
     }
   | { kind: "run"; run: RunSite; next: number }
   | { kind: "succeed"; expression: Expression }
-  | { kind: "succeedResume" }
+  | { kind: "succeedResume"; witnessIndex: number }
   | { kind: "succeedVoid" };
 
 interface BasicBlock {
@@ -198,7 +198,10 @@ class CfgBuilder {
           const resumeB = this.newBlock();
           this.block(resumeB).resume = run;
           this.setTerm(block, { kind: "run", run, next: resumeB });
-          this.setTerm(resumeB, { kind: "succeedResume" });
+          this.setTerm(resumeB, {
+            kind: "succeedResume",
+            witnessIndex: run.witnessIndex,
+          });
           return;
         }
         this.setTerm(block, {
@@ -385,9 +388,11 @@ class Emitter {
   private needsAsyncType = false;
   private needsMakeSymbol = false;
   private needsThunkReturnType = false;
+  private needsInferLet = false;
   private needsSymbolType = false;
   private needsMatchHelpers = false;
   private isTempId = 0;
+  private initWitnessId = 0;
   /** Same-file symbol name → resolved associated type text. */
   private readonly symbolAssoc = new Map<string, string>();
   /** Same-file symbol decls by name (for parent brand chaining). */
@@ -406,6 +411,7 @@ class Emitter {
     this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
+    this.needsInferLet = fileNeedsInferLet(ast);
     this.needsMatchHelpers = fileHasMatchHelpers(ast);
     if (this.needsMatchHelpers) this.needsSymbolType = true;
     this.collectSymbolDecls(ast);
@@ -445,6 +451,7 @@ class Emitter {
       this.needsRequiresType ||
       this.needsAsyncType ||
       this.needsThunkReturnType ||
+      this.needsInferLet ||
       this.needsSymbolType
     ) {
       const typeNames: string[] = [];
@@ -452,6 +459,7 @@ class Emitter {
       if (this.needsRequiresType) typeNames.push("Requires");
       if (this.needsAsyncType) typeNames.push("Async");
       if (this.needsThunkReturnType) typeNames.push("ThunkReturnType");
+      if (this.needsInferLet) typeNames.push("InferLet");
       if (this.needsSymbolType) typeNames.push("SymbolType");
       this.write(
         `import type { ${typeNames.join(", ")} } from "${this.typesImportPath}";\n`,
@@ -833,7 +841,9 @@ class Emitter {
         this.write(");\n");
         return;
       case "succeedResume":
-        this.write("return succeed(__resume);\n");
+        this.write(
+          `return succeed(__resume as ThunkReturnType<NonNullable<typeof __t${term.witnessIndex}>>);\n`,
+        );
         return;
       case "succeedVoid":
         this.write("return succeed(undefined as void);\n");
@@ -842,27 +852,8 @@ class Emitter {
   }
 
   private emitHoistedLocals(body: Statement[], runSites: RunSite[]): void {
-    const ordinary: VariableStatement[] = [];
-    collectOrdinaryVars(body, ordinary);
-
-    for (const stmt of ordinary) {
-      this.write("let ");
-      this.writeMapped(stmt.name.name, stmt.name.range);
-      if (stmt.typeAnnotation) {
-        this.write(": ");
-        this.emitTypeAnnotation(stmt.typeAnnotation);
-      }
-      this.write(";\n");
-    }
-
-    // Pattern bindings from `if`/`while` `is` conditions (assigned on success).
-    const isBinds = collectIsBindingsFromStmts(body);
-    for (const b of isBinds) {
-      this.write("let ");
-      this.writeMapped(b.name, b.range);
-      this.write(": any;\n");
-    }
-
+    // Run bindings first — ANF temps (`__r0`) may appear in ordinary
+    // initializers' InferLet witnesses below.
     for (const run of runSites) {
       this.write(`const __t${run.witnessIndex} = false ? `);
       this.emitValueExpression(run.source);
@@ -880,6 +871,38 @@ class Emitter {
         }
         this.write(";\n");
       }
+    }
+
+    const ordinary: VariableStatement[] = [];
+    collectOrdinaryVars(body, ordinary);
+
+    for (const stmt of ordinary) {
+      if (!stmt.typeAnnotation) {
+        // Infer a widened `let` type from the initializer via a dead witness
+        // (same pattern as run bindings). Without this, bare `let x;` is
+        // implicit any across the machine closure boundary (TS7034).
+        const wit = this.initWitnessId++;
+        this.write(`const __v${wit} = false ? (`);
+        this.emitValueExpression(stmt.initializer);
+        this.write(") : undefined;\n");
+        this.write("let ");
+        this.writeMapped(stmt.name.name, stmt.name.range);
+        this.write(`: InferLet<NonNullable<typeof __v${wit}>>;\n`);
+        continue;
+      }
+      this.write("let ");
+      this.writeMapped(stmt.name.name, stmt.name.range);
+      this.write(": ");
+      this.emitTypeAnnotation(stmt.typeAnnotation);
+      this.write(";\n");
+    }
+
+    // Pattern bindings from `if`/`while` `is` conditions (assigned on success).
+    const isBinds = collectIsBindingsFromStmts(body);
+    for (const b of isBinds) {
+      this.write("let ");
+      this.writeMapped(b.name, b.range);
+      this.write(": any;\n");
     }
   }
 
@@ -1734,6 +1757,76 @@ function emptyObjectType(text: string): boolean {
 
 function fileHasRunInThunk(ast: SourceFile): boolean {
   return walkHasRun(ast.statements);
+}
+
+/**
+ * True when a thunk with `run` hoists an ordinary `let`/`const` that has no
+ * type annotation — those need `InferLet` witnesses to avoid TS7034.
+ */
+function fileNeedsInferLet(ast: SourceFile): boolean {
+  const visitExpr = (expr: Expression): boolean => {
+    switch (expr.kind) {
+      case "ThunkExpression":
+        if (!bodyContainsRun(expr.body)) return false;
+        {
+          const ordinary: VariableStatement[] = [];
+          collectOrdinaryVars(expr.body, ordinary);
+          if (ordinary.some((v) => !v.typeAnnotation)) return true;
+        }
+        return expr.body.some((s) => visitStmt(s));
+      case "RunExpression":
+        return visitExpr(expr.expression);
+      case "PipeExpression":
+      case "AndExpression":
+        return visitExpr(expr.left) || visitExpr(expr.right);
+      case "IsExpression":
+        return visitExpr(expr.scrutinee);
+      case "MatchExpression":
+        return (
+          visitExpr(expr.scrutinee) ||
+          expr.arms.some((a) => visitExpr(a.expression))
+        );
+      case "TsExpression":
+        return expr.parts.some(
+          (p) => p.kind === "embedded" && visitExpr(p.expression),
+        );
+      default:
+        return false;
+    }
+  };
+  const visitStmt = (stmt: Statement): boolean => {
+    switch (stmt.kind) {
+      case "BlockStatement":
+        return stmt.statements.some(visitStmt);
+      case "IfStatement":
+        return (
+          visitExpr(stmt.condition) ||
+          visitStmt(stmt.consequent) ||
+          (stmt.alternate ? visitStmt(stmt.alternate) : false)
+        );
+      case "WhileStatement":
+        return visitExpr(stmt.condition) || visitStmt(stmt.body);
+      case "ForStatement":
+        return (
+          (stmt.initializer
+            ? stmt.initializer.kind === "VariableStatement"
+              ? visitStmt(stmt.initializer)
+              : visitExpr(stmt.initializer.expression)
+            : false) ||
+          (stmt.condition ? visitExpr(stmt.condition) : false) ||
+          (stmt.update ? visitExpr(stmt.update) : false) ||
+          visitStmt(stmt.body)
+        );
+      case "VariableStatement":
+        return visitExpr(stmt.initializer);
+      case "ExpressionStatement":
+      case "ReturnStatement":
+        return visitExpr(stmt.expression);
+      default:
+        return false;
+    }
+  };
+  return ast.statements.some(visitStmt);
 }
 
 function walkHasRun(stmts: Statement[]): boolean {

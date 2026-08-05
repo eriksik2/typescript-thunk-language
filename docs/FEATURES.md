@@ -178,9 +178,11 @@ const value: Thunk<number> = thunk {
 |---|---|
 | Pure thunk binding (`random`) | Hover shows `Thunk<number>` (not `RuntimeThunk`) |
 | Empty protocol bag | Pretty-printer elides `EmptyProtocols` / `{}` |
+| Nested `Thunk<Thunk<boolean, { [Async]: void }>>` | Pretty-prints `Thunk<Thunk<boolean> Async>` |
+| `Thunk<T> Requires(X)` / `Async` → plain `Thunk<T>` | **Not** assignable (protocol bag invariant) |
 | Runtime | Tagged nodes cast to `Thunk<T, P>` at API boundary (`@thunk/runtime`) |
 
-**Implementation notes.** [`packages/types`](../packages/types/src/index.ts) defines `Thunk<T, P>`. Runtime primitives return `Thunk`. Language-service pretty-prints hover.
+**Implementation notes.** [`packages/types`](../packages/types/src/index.ts) defines `Thunk<T, P>` with an invariant protocol marker so `EmptyProtocols` (`{}`) cannot absorb nonempty bags. Runtime primitives return `Thunk`. Language-service pretty-prints hover (including nested thunks and trailing-`;` bags from the TS printer).
 
 ---
 
