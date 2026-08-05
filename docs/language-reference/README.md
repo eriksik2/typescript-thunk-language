@@ -12,7 +12,7 @@ Prefer this folder when you need **how a feature works**.
 | I want… | Go to |
 |---|---|
 | Overview of the language | [Core concepts](./core/README.md) |
-| `thunk { }` / `run` / `\|` / `match` | [Thunk blocks](./core/thunk-blocks.md), [run](./core/run.md), [pipe](./core/pipe.md), [match](./core/match.md) |
+| `thunk { }` / `run` / `\|` / `match` / `is` | [Thunk blocks](./core/thunk-blocks.md), [run](./core/run.md), [pipe](./core/pipe.md), [match](./core/match.md), [is](./core/is.md) |
 | `Thunk<T>` types & protocols | [Types](./types/README.md) |
 | `symbol` / branding / `Symbol.of` | [Symbols](./symbols/README.md) |
 | `use` / `provide` / layers | [Environment](./environment/README.md) |
@@ -36,6 +36,7 @@ Prefer this folder when you need **how a feature works**.
 | [`examples/basic.thunk`](../../examples/basic.thunk) | `thunk` / `run` |
 | [`examples/pipe.thunk`](../../examples/pipe.thunk) | `\|` pipe + expr-position `run` |
 | [`examples/match.thunk`](../../examples/match.thunk) | `match` / Result / Option / error union |
+| [`examples/is-pattern.thunk`](../../examples/is-pattern.thunk) | `if (x is Err: infer e)` |
 | [`examples/symbols.thunk`](../../examples/symbols.thunk) | branding |
 | [`examples/symbols-hierarchy.thunk`](../../examples/symbols-hierarchy.thunk) | `abstract` / `extends` |
 | [`examples/failures.thunk`](../../examples/failures.thunk) | built-in Failure tree + `Symbol.is` |

@@ -17,8 +17,10 @@
  *   symbol Name extends Parent { ... }
  *   expr | fn / expr | fn(a)   (first-arg pipe)
  *   match (expr) { Arm, … }
+ *   expr is Pattern          (boolean pattern test)
+ *   a && b                   (logical and; binds from `is` flow left-to-right)
  *
- * Expressions: hybrid TS text + structural thunk/run/pipe/match; expression-position
+ * Expressions: hybrid TS text + structural thunk/run/pipe/match/is; expression-position
  * `run` is normalized via ANF before machine lowering.
  */
 
@@ -218,7 +220,31 @@ export type Expression =
   | RunExpression
   | PipeExpression
   | MatchExpression
+  | IsExpression
+  | AndExpression
   | TsExpression;
+
+/**
+ * `scrutinee is Pattern` — boolean exact-leaf test.
+ * `infer` bindings are only valid in `if` / `while` conditions (and `&&` chains therein).
+ */
+export interface IsExpression {
+  readonly kind: "IsExpression";
+  readonly range: Range;
+  readonly scrutinee: Expression;
+  readonly pattern: MatchPattern;
+}
+
+/**
+ * Left-associative `&&`. Used so `ready && x is Err: infer e` parses with
+ * `is` tighter than `&&`, and bindings flow into later conjuncts / then-branch.
+ */
+export interface AndExpression {
+  readonly kind: "AndExpression";
+  readonly range: Range;
+  readonly left: Expression;
+  readonly right: Expression;
+}
 
 /**
  * `match (scrutinee) { Arm, … }` — exact leaf match (v1).

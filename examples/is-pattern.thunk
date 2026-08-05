@@ -1,0 +1,16 @@
+import { Ok, Err, type Result } from "@thunk/runtime"
+
+const describe = (r: Result<number, string>) => thunk {
+  if (r is Err: infer e) {
+    return "err " + e
+  }
+  // Bindings flow through && into later conjuncts and the then-branch
+  if (r is Ok: infer n && n > 0) {
+    return "pos " + n
+  }
+  return "non-positive ok"
+}
+
+const a = run describe(Ok(3))
+const b = run describe(Err("boom"))
+const flag = Err("x") is Err

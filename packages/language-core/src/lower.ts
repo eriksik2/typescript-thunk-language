@@ -387,6 +387,7 @@ class Emitter {
   private needsThunkReturnType = false;
   private needsSymbolType = false;
   private needsMatchHelpers = false;
+  private isTempId = 0;
   /** Same-file symbol name → resolved associated type text. */
   private readonly symbolAssoc = new Map<string, string>();
   /** Same-file symbol decls by name (for parent brand chaining). */
@@ -405,7 +406,7 @@ class Emitter {
     this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
-    this.needsMatchHelpers = fileHasMatch(ast);
+    this.needsMatchHelpers = fileHasMatchHelpers(ast);
     if (this.needsMatchHelpers) this.needsSymbolType = true;
     this.collectSymbolDecls(ast);
 
@@ -795,6 +796,21 @@ class Emitter {
         this.write("continue;\n");
         return;
       case "branch":
+        if (conditionUsesIsFlow(term.condition)) {
+          this.emitConditionFlow(
+            term.condition,
+            /*bindMode*/ "assign",
+            () => {
+              this.write(`__state = ${term.thenTarget};\n`);
+              this.write("continue;\n");
+            },
+            () => {
+              this.write(`__state = ${term.elseTarget};\n`);
+              this.write("continue;\n");
+            },
+          );
+          return;
+        }
         this.write("if (");
         this.emitValueExpression(term.condition);
         this.write(") {\n");
@@ -837,6 +853,14 @@ class Emitter {
         this.emitTypeAnnotation(stmt.typeAnnotation);
       }
       this.write(";\n");
+    }
+
+    // Pattern bindings from `if`/`while` `is` conditions (assigned on success).
+    const isBinds = collectIsBindingsFromStmts(body);
+    for (const b of isBinds) {
+      this.write("let ");
+      this.writeMapped(b.name, b.range);
+      this.write(": any;\n");
     }
 
     for (const run of runSites) {
@@ -966,6 +990,19 @@ class Emitter {
         this.write("}\n");
         return;
       case "IfStatement":
+        if (conditionUsesIsFlow(stmt.condition)) {
+          this.write("{\n");
+          this.emitConditionFlow(
+            stmt.condition,
+            "const",
+            () => this.emitPureStatement(stmt.consequent),
+            () => {
+              if (stmt.alternate) this.emitPureStatement(stmt.alternate);
+            },
+          );
+          this.write("}\n");
+          return;
+        }
         this.write("if (");
         this.emitValueExpression(stmt.condition);
         this.write(") ");
@@ -976,6 +1013,19 @@ class Emitter {
         }
         return;
       case "WhileStatement":
+        if (conditionUsesIsFlow(stmt.condition)) {
+          this.write("while (true) {\n");
+          this.emitConditionFlow(
+            stmt.condition,
+            "const",
+            () => this.emitPureStatement(stmt.body),
+            () => {
+              this.write("break;\n");
+            },
+          );
+          this.write("}\n");
+          return;
+        }
         this.write("while (");
         this.emitValueExpression(stmt.condition);
         this.write(") ");
@@ -1039,6 +1089,21 @@ class Emitter {
       case "MatchExpression":
         this.emitMatchExpression(expr);
         return;
+      case "IsExpression":
+        this.emitIsExpressionValue(expr);
+        return;
+      case "AndExpression":
+        if (expressionHasIsBindings(expr)) {
+          throw new Error(
+            "`is` pattern bindings are only allowed in `if` / `while` conditions",
+          );
+        }
+        this.write("(");
+        this.emitValueExpression(expr.left);
+        this.write(" && ");
+        this.emitValueExpression(expr.right);
+        this.write(")");
+        return;
       case "RunExpression":
         // After ANF, nested run should not appear in value position inside
         // thunks; top-level / fallback peels via execute.
@@ -1046,6 +1111,157 @@ class Emitter {
         this.emitValueExpression(expr.expression);
         this.write(")");
         return;
+    }
+  }
+
+  /**
+   * Boolean `x is Pat` in value position — no `infer` bindings.
+   */
+  private emitIsExpressionValue(expr: {
+    readonly scrutinee: Expression;
+    readonly pattern: MatchPatternLike;
+  }): void {
+    if (patternHasBindings(expr.pattern)) {
+      throw new Error(
+        "`is` pattern bindings are only allowed in `if` / `while` conditions",
+      );
+    }
+    this.needsMatchHelpers = true;
+    const sym = expr.pattern.symbol;
+    const ident = simpleIdentName(expr.scrutinee);
+    if (ident) {
+      this.write("__symbolIs(");
+      this.writeMapped(ident.name, ident.range);
+      this.write(", ");
+      this.writeMapped(sym.name, sym.range);
+      this.write(")");
+      return;
+    }
+    const tmp = `__is${this.isTempId++}`;
+    this.write(`((${tmp}) => __symbolIs(${tmp}, `);
+    this.writeMapped(sym.name, sym.range);
+    this.write("))(");
+    this.emitValueExpression(expr.scrutinee);
+    this.write(")");
+  }
+
+  /**
+   * Control-flow desugar for `is` / `&&` so bindings are in scope on success.
+   * `bindMode`: `const` for pure if/while; `assign` for machine-hoisted lets.
+   */
+  private emitConditionFlow(
+    cond: Expression,
+    bindMode: "const" | "assign",
+    onTrue: () => void,
+    onFalse: () => void,
+  ): void {
+    if (cond.kind === "AndExpression") {
+      this.emitConditionFlow(
+        cond.left,
+        bindMode,
+        () => this.emitConditionFlow(cond.right, bindMode, onTrue, onFalse),
+        onFalse,
+      );
+      return;
+    }
+    if (cond.kind === "IsExpression") {
+      this.emitIsCondition(cond, bindMode, onTrue, onFalse);
+      return;
+    }
+    this.write("if (");
+    this.emitValueExpression(cond);
+    this.write(") {\n");
+    onTrue();
+    this.write("} else {\n");
+    onFalse();
+    this.write("}\n");
+  }
+
+  private emitIsCondition(
+    expr: {
+      readonly scrutinee: Expression;
+      readonly pattern: MatchPatternLike;
+    },
+    bindMode: "const" | "assign",
+    onTrue: () => void,
+    onFalse: () => void,
+  ): void {
+    this.needsMatchHelpers = true;
+    this.needsSymbolType = true;
+    const sym = expr.pattern.symbol;
+    let scrutineeName: string;
+    const ident = simpleIdentName(expr.scrutinee);
+    if (ident) {
+      scrutineeName = ident.name;
+      this.write("if (__symbolIs(");
+      this.writeMapped(ident.name, ident.range);
+      this.write(", ");
+      this.writeMapped(sym.name, sym.range);
+      this.write(")) {\n");
+    } else {
+      scrutineeName = `__is${this.isTempId++}`;
+      this.write(`const ${scrutineeName} = `);
+      this.emitValueExpression(expr.scrutinee);
+      this.write(";\n");
+      this.write(`if (__symbolIs(${scrutineeName}, `);
+      this.writeMapped(sym.name, sym.range);
+      this.write(")) {\n");
+    }
+    this.write(
+      `type __leaf = Extract<typeof ${scrutineeName}, { readonly __symbolIdentity?: typeof `,
+    );
+    this.writeMapped(sym.name, sym.range);
+    this.write(" }>;\n");
+    this.emitPatternBindings(expr.pattern, scrutineeName, bindMode);
+    onTrue();
+    this.write("} else {\n");
+    onFalse();
+    this.write("}\n");
+  }
+
+  private emitPatternBindings(
+    pattern: MatchPatternLike,
+    scrutineeName: string,
+    bindMode: "const" | "assign",
+  ): void {
+    if (pattern.kind === "MatchSymbolPattern") {
+      if (!pattern.binding) return;
+      if (bindMode === "const") {
+        this.write("const ");
+        this.writeMapped(pattern.binding.name, pattern.binding.range);
+        this.write(
+          ` = __symbolPayload(${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+        );
+      } else {
+        this.writeMapped(pattern.binding.name, pattern.binding.range);
+        this.write(
+          ` = __symbolPayload(${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+        );
+      }
+      return;
+    }
+    if (bindMode === "const") {
+      this.write(
+        `const __payload = (${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+      );
+    } else {
+      this.write(
+        `const __payload = (${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+      );
+    }
+    for (const field of pattern.fields) {
+      if (bindMode === "const") {
+        this.write("const ");
+        this.writeMapped(field.binding.name, field.binding.range);
+        this.write(" = __payload.");
+        this.writeMapped(field.field.name, field.field.range);
+        this.write(";\n");
+      } else {
+        this.writeMapped(field.binding.name, field.binding.range);
+        this.write(" = __payload.");
+        this.writeMapped(field.field.name, field.field.range);
+        this.write(";\n");
+      }
     }
   }
 
@@ -1296,59 +1512,214 @@ function fileHasSymbolDecls(ast: SourceFile): boolean {
   return ast.statements.some((s) => s.kind === "SymbolDeclaration");
 }
 
-function fileHasMatch(ast: SourceFile): boolean {
-  return walkHasMatch(ast.statements);
+function fileHasMatchHelpers(ast: SourceFile): boolean {
+  return walkHasMatchHelpers(ast.statements);
 }
 
-function walkHasMatch(stmts: readonly Statement[]): boolean {
+function walkHasMatchHelpers(stmts: readonly Statement[]): boolean {
   for (const stmt of stmts) {
     switch (stmt.kind) {
       case "VariableStatement":
-        if (exprHasMatch(stmt.initializer)) return true;
+        if (exprHasMatchHelpers(stmt.initializer)) return true;
         break;
       case "ExpressionStatement":
       case "ReturnStatement":
-        if (exprHasMatch(stmt.expression)) return true;
+        if (exprHasMatchHelpers(stmt.expression)) return true;
         break;
       case "BlockStatement":
-        if (walkHasMatch(stmt.statements)) return true;
+        if (walkHasMatchHelpers(stmt.statements)) return true;
         break;
       case "IfStatement":
-        if (exprHasMatch(stmt.condition)) return true;
-        if (walkHasMatch([stmt.consequent])) return true;
-        if (stmt.alternate && walkHasMatch([stmt.alternate])) return true;
+        if (exprHasMatchHelpers(stmt.condition)) return true;
+        if (walkHasMatchHelpers([stmt.consequent])) return true;
+        if (stmt.alternate && walkHasMatchHelpers([stmt.alternate])) return true;
         break;
       case "WhileStatement":
-        if (exprHasMatch(stmt.condition)) return true;
-        if (walkHasMatch([stmt.body])) return true;
+        if (exprHasMatchHelpers(stmt.condition)) return true;
+        if (walkHasMatchHelpers([stmt.body])) return true;
         break;
       case "ForStatement":
-        if (stmt.condition && exprHasMatch(stmt.condition)) return true;
-        if (stmt.update && exprHasMatch(stmt.update)) return true;
-        if (walkHasMatch([stmt.body])) return true;
+        if (stmt.condition && exprHasMatchHelpers(stmt.condition)) return true;
+        if (stmt.update && exprHasMatchHelpers(stmt.update)) return true;
+        if (walkHasMatchHelpers([stmt.body])) return true;
         break;
     }
   }
   return false;
 }
 
-function exprHasMatch(expr: Expression): boolean {
+function exprHasMatchHelpers(expr: Expression): boolean {
   switch (expr.kind) {
     case "MatchExpression":
+    case "IsExpression":
       return true;
     case "PipeExpression":
-      return exprHasMatch(expr.left) || exprHasMatch(expr.right);
+    case "AndExpression":
+      return exprHasMatchHelpers(expr.left) || exprHasMatchHelpers(expr.right);
     case "RunExpression":
-      return exprHasMatch(expr.expression);
+      return exprHasMatchHelpers(expr.expression);
     case "ThunkExpression":
-      return walkHasMatch(expr.body);
+      return walkHasMatchHelpers(expr.body);
     case "TsExpression":
       return expr.parts.some(
-        (p) => p.kind === "embedded" && exprHasMatch(p.expression),
+        (p) => p.kind === "embedded" && exprHasMatchHelpers(p.expression),
       );
     case "Identifier":
       return false;
   }
+}
+
+type MatchPatternLike =
+  | {
+      readonly kind: "MatchSymbolPattern";
+      readonly symbol: { readonly name: string; readonly range: Range };
+      readonly binding?: { readonly name: string; readonly range: Range };
+    }
+  | {
+      readonly kind: "MatchObjectPattern";
+      readonly symbol: { readonly name: string; readonly range: Range };
+      readonly fields: readonly {
+        readonly field: { readonly name: string; readonly range: Range };
+        readonly binding: { readonly name: string; readonly range: Range };
+      }[];
+    };
+
+/** Identifier or single-token TsExpression name (hybrid primary path). */
+function simpleIdentName(
+  expr: Expression,
+): { name: string; range: Range } | null {
+  if (expr.kind === "Identifier") {
+    return { name: expr.name, range: expr.range };
+  }
+  if (expr.kind === "TsExpression" && expr.parts.length === 1) {
+    const part = expr.parts[0]!;
+    if (part.kind === "text") {
+      const name = part.text.trim();
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        return { name, range: part.range };
+      }
+    }
+  }
+  return null;
+}
+
+function patternHasBindings(pattern: MatchPatternLike): boolean {
+  if (pattern.kind === "MatchSymbolPattern") return !!pattern.binding;
+  return pattern.fields.length > 0;
+}
+
+function expressionHasIsBindings(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "IsExpression":
+      return patternHasBindings(expr.pattern);
+    case "AndExpression":
+      return (
+        expressionHasIsBindings(expr.left) ||
+        expressionHasIsBindings(expr.right)
+      );
+    case "PipeExpression":
+      return (
+        expressionHasIsBindings(expr.left) ||
+        expressionHasIsBindings(expr.right)
+      );
+    case "RunExpression":
+      return expressionHasIsBindings(expr.expression);
+    case "MatchExpression":
+    case "ThunkExpression":
+    case "TsExpression":
+    case "Identifier":
+      return false;
+  }
+}
+
+/** True when if/while should desugar for `is` / binding flow (any `is`, or `&&`). */
+function conditionUsesIsFlow(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "IsExpression":
+      return true;
+    case "AndExpression":
+      return (
+        conditionUsesIsFlow(expr.left) || conditionUsesIsFlow(expr.right)
+      );
+    default:
+      return false;
+  }
+}
+
+function collectIsBindingsFromStmts(
+  stmts: readonly Statement[],
+): { name: string; range: Range }[] {
+  const out: { name: string; range: Range }[] = [];
+  const seen = new Set<string>();
+  const add = (b: { name: string; range: Range }) => {
+    if (seen.has(b.name)) return;
+    seen.add(b.name);
+    out.push(b);
+  };
+  const walkExpr = (expr: Expression) => {
+    switch (expr.kind) {
+      case "IsExpression":
+        if (expr.pattern.kind === "MatchSymbolPattern" && expr.pattern.binding) {
+          add(expr.pattern.binding);
+        } else if (expr.pattern.kind === "MatchObjectPattern") {
+          for (const f of expr.pattern.fields) add(f.binding);
+        }
+        walkExpr(expr.scrutinee);
+        break;
+      case "AndExpression":
+      case "PipeExpression":
+        walkExpr(expr.left);
+        walkExpr(expr.right);
+        break;
+      case "RunExpression":
+        walkExpr(expr.expression);
+        break;
+      case "MatchExpression":
+        walkExpr(expr.scrutinee);
+        break;
+      case "TsExpression":
+        for (const p of expr.parts) {
+          if (p.kind === "embedded") walkExpr(p.expression);
+        }
+        break;
+      case "ThunkExpression":
+        walkStmts(expr.body);
+        break;
+      case "Identifier":
+        break;
+    }
+  };
+  const walkStmts = (ss: readonly Statement[]) => {
+    for (const stmt of ss) {
+      switch (stmt.kind) {
+        case "IfStatement":
+          walkExpr(stmt.condition);
+          walkStmts([stmt.consequent]);
+          if (stmt.alternate) walkStmts([stmt.alternate]);
+          break;
+        case "WhileStatement":
+          walkExpr(stmt.condition);
+          walkStmts([stmt.body]);
+          break;
+        case "ForStatement":
+          if (stmt.condition) walkExpr(stmt.condition);
+          walkStmts([stmt.body]);
+          break;
+        case "BlockStatement":
+          walkStmts(stmt.statements);
+          break;
+        case "VariableStatement":
+          walkExpr(stmt.initializer);
+          break;
+        case "ExpressionStatement":
+        case "ReturnStatement":
+          walkExpr(stmt.expression);
+          break;
+      }
+    }
+  };
+  walkStmts(stmts);
+  return out;
 }
 
 function exprHasRunInArms(expr: {
@@ -1374,7 +1745,10 @@ function exprHasRun(expr: Expression): boolean {
     case "RunExpression":
       return true;
     case "PipeExpression":
+    case "AndExpression":
       return exprHasRun(expr.left) || exprHasRun(expr.right);
+    case "IsExpression":
+      return exprHasRun(expr.scrutinee);
     case "MatchExpression":
       return (
         exprHasRun(expr.scrutinee) ||
@@ -1400,6 +1774,10 @@ function expressionText(expr: Expression): string {
       return expr.text;
     case "PipeExpression":
       return `${expressionText(expr.left)} | ${expressionText(expr.right)}`;
+    case "AndExpression":
+      return `${expressionText(expr.left)} && ${expressionText(expr.right)}`;
+    case "IsExpression":
+      return `${expressionText(expr.scrutinee)} is …`;
     case "RunExpression":
       return `run ${expressionText(expr.expression)}`;
     case "MatchExpression":

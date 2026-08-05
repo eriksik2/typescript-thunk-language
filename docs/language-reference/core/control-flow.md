@@ -47,4 +47,6 @@ See [`examples/control-flow.thunk`](../../../examples/control-flow.thunk) (and i
 - [Thunk blocks](./thunk-blocks.md)
 - [run](./run.md)
 - [Pipe](./pipe.md)
+- [match](./match.md)
+- [is](./is.md)
 - [Bindings](./bindings.md)

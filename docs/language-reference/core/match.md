@@ -52,6 +52,7 @@ type Option<T> = Some<T> | None
 
 ## Related
 
+- [is](./is.md) — single-arm boolean test + `if`/`while` bindings
 - [Result](../types/result.md)
 - [symbol declarations](../symbols/symbol-declarations.md) — including generics
 - [Symbol.is / has / to](../symbols/symbol-is.md)

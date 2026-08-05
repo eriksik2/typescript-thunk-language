@@ -6,11 +6,13 @@
  */
 
 import type {
+  AndExpression,
   Expression,
   ExpressionStatement,
   Identifier,
   ImportDeclaration,
   ImportSpecifier,
+  IsExpression,
   MatchArm,
   MatchExpression,
   MatchFieldPattern,
@@ -781,15 +783,63 @@ class Parser {
   }
 
   /**
-   * Expression grammar (pipe tighter than `run`):
+   * Expression grammar:
    *
-   *   expr     = runExpr
+   *   expr     = andExpr
+   *   andExpr  = isExpr ('&&' isExpr)*
+   *   isExpr   = runExpr ('is' pattern)?
    *   runExpr  = 'run' runExpr | pipeExpr
    *   pipeExpr = primary ('|' primary)*
-   *   primary  = thunk | match | '(' expr ')' | tsAtom
+   *   primary  = thunk | match | '(' … ')' | tsAtom
    */
   private parseExpression(): Expression {
-    return this.parseRunExpression();
+    return this.parseAndExpression();
+  }
+
+  private parseAndExpression(): Expression {
+    const start = this.pos;
+    let left = this.parseIsExpression();
+    for (;;) {
+      // Horizontal space only — newlines end statements / TsExpressions.
+      this.skipSpaces();
+      if (!this.tryMatchAndOperator()) break;
+      this.skipTrivia();
+      const right = this.parseIsExpression();
+      const and: AndExpression = {
+        kind: "AndExpression",
+        range: this.range(start, this.pos),
+        left,
+        right,
+      };
+      left = and;
+    }
+    return left;
+  }
+
+  /** `&&` only (not `&` / `&=`). */
+  private tryMatchAndOperator(): boolean {
+    if (this.text.slice(this.pos, this.pos + 2) !== "&&") return false;
+    this.pos += 2;
+    return true;
+  }
+
+  private parseIsExpression(): Expression {
+    const start = this.pos;
+    const left = this.parseRunExpression();
+    // Only horizontal space — do not skip newlines (would swallow the next
+    // statement after `match` / primary when checking for `is`).
+    this.skipSpaces();
+    if (!this.atKeywordHere("is")) return left;
+    this.pos += "is".length;
+    this.skipTrivia();
+    const pattern = this.parseMatchPattern();
+    const isExpr: IsExpression = {
+      kind: "IsExpression",
+      range: this.range(start, this.pos),
+      scrutinee: left,
+      pattern,
+    };
+    return isExpr;
   }
 
   private parseRunExpression(): Expression {
@@ -1025,6 +1075,18 @@ class Parser {
         }
         // Pipe operator — leave for parsePipeExpression (not `||`)
         if (c === "|" && this.text[this.pos + 1] !== "|") break;
+        // Logical and — leave for parseAndExpression
+        if (c === "&" && this.text[this.pos + 1] === "&") break;
+        // Pattern `is` — leave for parseIsExpression (not `.is` / `island`)
+        // Use non-mutating keyword peek — `peekKeyword` skips trivia and
+        // would consume spaces before `|` / other operators.
+        if (
+          this.atKeywordHere("is") &&
+          !this.precededByDot() &&
+          this.tsExprHasContent(parts, chunkStart)
+        ) {
+          break;
+        }
       }
 
       if (
@@ -1125,6 +1187,26 @@ class Parser {
     if (t.endsWith("=>")) return true;
     const last = t[t.length - 1]!;
     return "=(,+-*/%<>!?&|:.[".includes(last);
+  }
+
+  /** Keyword check at the current position without skipping trivia. */
+  private atKeywordHere(kw: string): boolean {
+    if (!this.atIdentBoundary()) return false;
+    if (!this.text.startsWith(kw, this.pos)) return false;
+    const after = this.pos + kw.length;
+    if (after < this.text.length && this.isIdentPart(this.text[after]!)) {
+      return false;
+    }
+    return true;
+  }
+
+  /** True when TsExpression has already consumed a left operand. */
+  private tsExprHasContent(
+    parts: readonly TsExpressionPart[],
+    chunkStart: number,
+  ): boolean {
+    if (parts.length > 0) return true;
+    return this.text.slice(chunkStart, this.pos).trim().length > 0;
   }
 
   private tryEmbedThunkOrRun(
