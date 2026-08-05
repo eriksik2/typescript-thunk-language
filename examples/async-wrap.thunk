@@ -22,6 +22,16 @@ const program = thunk {
   }
 }
 
+const programAsFn = async () => {
+  let tries: number = 0;
+  while (true) {
+    const res = await run wrap(() => promiseFn())
+    if (res) return tries
+    tries++
+    if (tries > 20) return tries
+  }
+}
+
 const result = run program
 result.then((tries) => {
   console.log({ tries })
