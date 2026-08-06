@@ -22,6 +22,7 @@ Missing `use` → TypeScript “Cannot find name 'use'”.
 
 ## Related
 
+- [File prelude](./file-prelude.md) — required before imports
 - [Runtime packages](./runtime-packages.md)
 - [use](../environment/use.md)
 - [Thunk type](../types/thunk-type.md)

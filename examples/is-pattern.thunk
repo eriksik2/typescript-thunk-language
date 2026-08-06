@@ -1,3 +1,5 @@
+file isPattern of Examples
+
 import { Ok, Err, type Result } from "@thunk/runtime"
 
 const describe = (r: Result<number, string>) => thunk {

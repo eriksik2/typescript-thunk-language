@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource } from "@thunk/language-core";
 import { createThunkProject, hoverAtOffset } from "./src/index";
@@ -32,7 +33,7 @@ function projectOpts(fileName: string, source: string) {
 describe("surface: thunk type assignability", () => {
   test("Thunk Requires(Database) is not assignable to Thunk<string>", () => {
     const fileName = path.join(root, "examples/assign-requires.thunk");
-    const source = `import { use } from "@thunk/runtime"
+    const source = withPrelude(`import { use } from "@thunk/runtime"
 
 symbol Database = { name: string }
 
@@ -42,7 +43,7 @@ const fetchUser = thunk {
 }
 
 const shouldError: Thunk<string> = fetchUser
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     const diags = p.getDiagnostics(fileName);
     expect(diags.some((d) => /not assignable/i.test(d))).toBe(true);
@@ -53,7 +54,7 @@ const shouldError: Thunk<string> = fetchUser
 
   test("Thunk Async is not assignable to plain Thunk<T>", () => {
     const fileName = path.join(root, "examples/assign-async.thunk");
-    const source = `import { wrap } from "@thunk/runtime"
+    const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 const asyncT = thunk {
   const x = run wrap(() => Promise.resolve(1))
@@ -61,7 +62,7 @@ const asyncT = thunk {
 }
 
 const shouldError: Thunk<number> = asyncT
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     const diags = p.getDiagnostics(fileName);
     expect(diags.some((d) => /not assignable/i.test(d))).toBe(true);
@@ -69,7 +70,7 @@ const shouldError: Thunk<number> = asyncT
 
   test("Thunk Async assigns to annotated Thunk<T> Async", () => {
     const fileName = path.join(root, "examples/assign-async-ok.thunk");
-    const source = `import { wrap } from "@thunk/runtime"
+    const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 const asyncT = thunk {
   const x = run wrap(() => Promise.resolve(1))
@@ -77,14 +78,14 @@ const asyncT = thunk {
 }
 
 const ok: Thunk<number> Async = asyncT
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
   });
 
   test("provide strips Requires so result assigns to Thunk<T>", () => {
     const fileName = path.join(root, "examples/assign-provide.thunk");
-    const source = `import { use, provide } from "@thunk/runtime"
+    const source = withPrelude(`import { use, provide } from "@thunk/runtime"
 
 symbol Database { name: string }
 const DatabaseLive = Database({ name: "live" })
@@ -95,7 +96,7 @@ const fetchUser = thunk {
 }
 
 const program: Thunk<string> = provide(fetchUser, DatabaseLive)
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
   });
@@ -104,7 +105,7 @@ const program: Thunk<string> = provide(fetchUser, DatabaseLive)
 describe("surface: return run wrap yield + Async", () => {
   test("return run wrap(() => promiseFn()) → Thunk<boolean> Async", () => {
     const fileName = path.join(root, "examples/return-run-wrap.thunk");
-    const source = `import { wrap } from "@thunk/runtime"
+    const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 function promiseFn(): Promise<boolean> {
   return Promise.resolve(true)
@@ -113,7 +114,7 @@ function promiseFn(): Promise<boolean> {
 const program2 = thunk {
   return run wrap(() => promiseFn())
 }
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
 
@@ -136,7 +137,7 @@ const program2 = thunk {
 
   test("return wrap without run → Thunk<Thunk<boolean> Async>", () => {
     const fileName = path.join(root, "examples/return-wrap-nested.thunk");
-    const source = `import { wrap } from "@thunk/runtime"
+    const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 function promiseFn(): Promise<boolean> {
   return Promise.resolve(true)
@@ -145,7 +146,7 @@ function promiseFn(): Promise<boolean> {
 const program2 = thunk {
   return wrap(() => promiseFn())
 }
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
 
@@ -162,7 +163,7 @@ const program2 = thunk {
 describe("surface: hoisted let inference + postfix ++", () => {
   test("unannotated let tries = 0 inside machine does not TS7034", () => {
     const fileName = path.join(root, "examples/hoisted-let.thunk");
-    const source = `const randomThunk = thunk { return 1 }
+    const source = withPrelude(`const randomThunk = thunk { return 1 }
 
 const program = thunk {
   let tries = 0
@@ -173,7 +174,7 @@ const program = thunk {
     if (tries > 20) return tries
   }
 }
-`;
+`);
     const lowered = lowerThunkSource(source, fileName);
     expect(lowered.generatedText).toMatch(/InferLet/);
     expect(lowered.generatedText).toMatch(/tries\+\+/);
@@ -196,7 +197,7 @@ const program = thunk {
 
   test("examples/async-wrap.thunk typechecks without Requires(unknown)", () => {
     const fileName = path.join(root, "examples/async-wrap.thunk");
-    const source = `import { wrap } from "@thunk/runtime"
+    const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 function promiseFn(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -218,7 +219,7 @@ const result = run program
 result.then((tries) => {
   console.log({ tries })
 })
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
 

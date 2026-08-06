@@ -9,6 +9,7 @@
 | [CLI](./tooling/cli.md) | tooling |
 | [Editor](./tooling/editor.md) | tooling |
 | [Failure hierarchy](./symbols/failure-hierarchy.md) | symbols |
+| [File prelude](./modules/file-prelude.md) | modules |
 | [Imports](./modules/imports.md) | modules |
 | [Layer](./environment/layer.md) | environment |
 | [is](./core/is.md) | core |

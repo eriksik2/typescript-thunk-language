@@ -191,6 +191,9 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
     case "ProtocolDeclaration":
     case "SymbolDeclaration":
     case "TypeAliasDeclaration":
+    case "FeatureDeclaration":
+    case "FileDeclaration":
+    case "TagsDeclaration":
       return [...lifted, stmt];
   }
 }

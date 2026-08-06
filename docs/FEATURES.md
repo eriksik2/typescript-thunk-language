@@ -1115,7 +1115,29 @@ Show `Thunk<T> Requires(A)` instead of raw encoding when possible. Empty bags â†
 | **Status** | **Done** (minimal) |
 | **Milestone** | M1 |
 
-Keywords `thunk` / `run` / `return` / `const` / `let`; `//` comments. Expand when `protocol` / `|` ship.
+Keywords include `thunk` / `run` / `feature` / `tags` / `symbol` / `protocol` / â€¦; `//` comments.
+
+---
+
+## 9.6 File prelude (`feature` / `tags`)
+
+| | |
+|---|---|
+| **Status** | **Done** |
+| **Milestone** | Tooling |
+
+Required `feature <Ident>` / `feature <Ident> of <Path>` on `*.feature.thunk`; code files use `file <Ident> of <Feature.Path>`. Feature tags feed the Code Browser tag bar. See [file prelude](./language-reference/modules/file-prelude.md).
+
+---
+
+## 9.7 Code Browser (VS Code)
+
+| | |
+|---|---|
+| **Status** | **Done** (MVP) |
+| **Milestone** | Tooling |
+
+Nested feature tree, horizontal feature-tag toggles, **+ file** / **+ feature** (editor + Save). Uses `indexThunkWorkspace` / feature registry from `@thunk/language-service`.
 
 ---
 

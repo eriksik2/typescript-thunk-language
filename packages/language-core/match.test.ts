@@ -4,11 +4,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { lowerThunkSource, parseThunkSource } from "./src/index";
+import { bodyStmts, withPrelude } from "./test-prelude";
 
 describe("generic symbols", () => {
   test("parses symbol Ok<A> = A", () => {
-    const ast = parseThunkSource(`symbol Ok<A> = A\n`);
-    const decl = ast.statements[0] as {
+    const ast = parseThunkSource(withPrelude(`symbol Ok<A> = A\n`));
+    const decl = bodyStmts(ast)[0] as {
       kind: string;
       name: { name: string };
       typeParams: string;
@@ -21,7 +22,7 @@ describe("generic symbols", () => {
   });
 
   test("lowers generic symbol", () => {
-    const lowered = lowerThunkSource(`symbol Ok<A> = A\nconst x = Ok(1)\n`);
+    const lowered = lowerThunkSource(withPrelude(`symbol Ok<A> = A\nconst x = Ok(1)\n`));
     expect(lowered.generatedText).toMatch(/type Ok<A>/);
     expect(lowered.generatedText).toContain("__makeSymbol<any>");
   });
@@ -29,13 +30,13 @@ describe("generic symbols", () => {
 
 describe("match parse / lower", () => {
   test("parses MatchExpression arms", () => {
-    const ast = parseThunkSource(`const y = match (x) {
+    const ast = parseThunkSource(withPrelude(`const y = match (x) {
   Ok: infer a => a,
   Err: infer e => e,
 }
-`);
+`));
     const init = (
-      ast.statements[0] as {
+      bodyStmts(ast)[0] as {
         initializer: {
           kind: string;
           arms: { pattern: { kind: string } }[];
@@ -48,12 +49,12 @@ describe("match parse / lower", () => {
   });
 
   test("parses object field patterns", () => {
-    const ast = parseThunkSource(`const y = match (s) {
+    const ast = parseThunkSource(withPrelude(`const y = match (s) {
   Circle { radius: infer r } => r,
 }
-`);
+`));
     const init = (
-      ast.statements[0] as {
+      bodyStmts(ast)[0] as {
         initializer: {
           kind: string;
           arms: {
@@ -70,13 +71,13 @@ describe("match parse / lower", () => {
   });
 
   test("lowers to __symbolIs + __exhaustive", () => {
-    const lowered = lowerThunkSource(`import { Ok, Err, type Result } from "@thunk/runtime"
+    const lowered = lowerThunkSource(withPrelude(`import { Ok, Err, type Result } from "@thunk/runtime"
 const show = (r: Result<number, string>): string =>
   match (r) {
     Ok: infer n => "ok " + n,
     Err: infer e => "err " + e,
   }
-`);
+`));
     expect(lowered.generatedText).toContain("__symbolIs(__match, Ok)");
     expect(lowered.generatedText).toContain("else if (__symbolIs(__match, Err)");
     expect(lowered.generatedText).toContain("__exhaustive(__match)");

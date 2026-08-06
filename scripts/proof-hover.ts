@@ -18,7 +18,9 @@ const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
 const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `const random = thunk {
+const source = `file basic of Examples
+
+const random = thunk {
   return Math.random()
 }
 

@@ -2,10 +2,13 @@ import * as serverProtocol from "@volar/language-server/protocol";
 import { createLabsInfo, getTsdk } from "@volar/vscode";
 import * as vscode from "vscode";
 import * as lsp from "vscode-languageclient/node";
+import { registerCodeBrowser } from "./code-browser";
 
 let client: lsp.BaseLanguageClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
+  registerCodeBrowser(context);
+
   // Prefer bundled server next to the extension; fall back to workspace package.
   const bundled = vscode.Uri.joinPath(context.extensionUri, "dist", "server.js");
   const workspaceServer = vscode.Uri.joinPath(

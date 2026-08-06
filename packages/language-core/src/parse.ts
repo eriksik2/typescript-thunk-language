@@ -9,6 +9,8 @@ import type {
   AndExpression,
   Expression,
   ExpressionStatement,
+  FeatureDeclaration,
+  FileDeclaration,
   Identifier,
   ImportDeclaration,
   ImportSpecifier,
@@ -26,6 +28,7 @@ import type {
   SourceFile,
   Statement,
   SymbolDeclaration,
+  TagsDeclaration,
   ThunkExpression,
   TsExpression,
   TsExpressionPart,
@@ -33,6 +36,7 @@ import type {
   TypeAnnotation,
   VariableStatement,
 } from "./ast";
+import { isFeatureThunkFile } from "./feature";
 import { offsetToPosition, positionToOffset, type Range } from "./source-map";
 
 export class ParseError extends Error {
@@ -56,9 +60,10 @@ class Parser {
     this.skipTrivia();
     const statements: Statement[] = [];
     while (!this.eof()) {
-      statements.push(this.parseStatement());
+      statements.push(this.parseStatement(/* allowPrelude */ true));
       this.skipTrivia();
     }
+    this.validatePrelude(statements);
     return {
       kind: "SourceFile",
       fileName: this.fileName,
@@ -67,8 +72,99 @@ class Parser {
     };
   }
 
-  private parseStatement(): Statement {
+  /**
+   * `*.feature.thunk` → `feature …` [tags]
+   * other `.thunk` → `file Name of Feature.Path` [tags]
+   */
+  private validatePrelude(statements: Statement[]): void {
+    const firstCode = this.offsetOfFirstNonTrivia();
+    const isFeatureFile = isFeatureThunkFile(this.fileName);
+    const first = statements[0];
+
+    if (isFeatureFile) {
+      if (!first || first.kind !== "FeatureDeclaration") {
+        throw new ParseError(
+          "feature file must start with `feature <Name>`",
+          firstCode,
+        );
+      }
+    } else {
+      if (!first || first.kind !== "FileDeclaration") {
+        throw new ParseError(
+          "code file must start with `file <Name> of <Feature.Path>`",
+          firstCode,
+        );
+      }
+    }
+
+    let i = 1;
+    if (statements[1]?.kind === "TagsDeclaration") {
+      i = 2;
+    }
+    for (; i < statements.length; i++) {
+      const stmt = statements[i]!;
+      if (stmt.kind === "FeatureDeclaration") {
+        throw new ParseError(
+          "`feature` is only allowed once at the start of a feature file",
+          positionToOffset(this.text, stmt.range.start),
+        );
+      }
+      if (stmt.kind === "FileDeclaration") {
+        throw new ParseError(
+          "`file` is only allowed once at the start of a code file",
+          positionToOffset(this.text, stmt.range.start),
+        );
+      }
+      if (stmt.kind === "TagsDeclaration") {
+        throw new ParseError(
+          "`tags` is only allowed immediately after `feature` / `file`",
+          positionToOffset(this.text, stmt.range.start),
+        );
+      }
+    }
+  }
+
+  private offsetOfFirstNonTrivia(): number {
+    const saved = this.pos;
+    this.pos = 0;
+    this.skipTrivia();
+    const offset = this.pos;
+    this.pos = saved;
+    return offset;
+  }
+
+  private parseStatement(allowPrelude = false): Statement {
     const start = this.pos;
+
+    if (this.peekKeyword("feature")) {
+      if (!allowPrelude) {
+        throw new ParseError(
+          "`feature` is only allowed in the file prelude",
+          this.pos,
+        );
+      }
+      return this.parseFeatureDeclaration(start);
+    }
+
+    if (this.peekKeyword("file")) {
+      if (!allowPrelude) {
+        throw new ParseError(
+          "`file` is only allowed in the file prelude",
+          this.pos,
+        );
+      }
+      return this.parseFileDeclaration(start);
+    }
+
+    if (this.peekKeyword("tags")) {
+      if (!allowPrelude) {
+        throw new ParseError(
+          "`tags` is only allowed in the file prelude",
+          this.pos,
+        );
+      }
+      return this.parseTagsDeclaration(start);
+    }
 
     if (this.peekKeyword("import")) {
       return this.parseImportDeclaration(start);
@@ -142,6 +238,95 @@ class Parser {
       kind: "ExpressionStatement",
       range: this.range(start, this.pos),
       expression,
+    };
+  }
+
+  /** `feature Name` | `feature Name of A.B.C` */
+  private parseFeatureDeclaration(start: number): FeatureDeclaration {
+    this.matchKeyword("feature");
+    this.skipTrivia();
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+    let ofPath: Identifier[] | undefined;
+    if (this.matchKeyword("of")) {
+      ofPath = this.parseQualifiedPath();
+    }
+    this.expectSemiOrNewline();
+    return {
+      kind: "FeatureDeclaration",
+      range: this.range(start, this.pos),
+      name,
+      ofPath,
+    };
+  }
+
+  /** `file Name of Feature.Path` — `of` required. */
+  private parseFileDeclaration(start: number): FileDeclaration {
+    this.matchKeyword("file");
+    this.skipTrivia();
+    const name = this.parseIdentifier();
+    this.skipTrivia();
+    if (!this.matchKeyword("of")) {
+      throw new ParseError("expected `of` after file name", this.pos);
+    }
+    const ofPath = this.parseQualifiedPath();
+    this.expectSemiOrNewline();
+    return {
+      kind: "FileDeclaration",
+      range: this.range(start, this.pos),
+      name,
+      ofPath,
+    };
+  }
+
+  /** `A` or `A.B.C` after optional trivia. */
+  private parseQualifiedPath(): Identifier[] {
+    this.skipTrivia();
+    const path: Identifier[] = [this.parseIdentifier()];
+    this.skipTrivia();
+    while (this.peek() === ".") {
+      this.pos++;
+      this.skipTrivia();
+      path.push(this.parseIdentifier());
+      this.skipTrivia();
+    }
+    return path;
+  }
+
+  /** `tags Tag1 Tag2 …` — tags stay on one line (spaces between idents). */
+  private parseTagsDeclaration(start: number): TagsDeclaration {
+    this.matchKeyword("tags");
+    this.skipSpaces();
+    const tags: Identifier[] = [];
+    if (!this.isIdentStart(this.peek())) {
+      throw new ParseError("expected tag identifier", this.pos);
+    }
+    while (this.isIdentStart(this.peek())) {
+      const tagStart = this.pos;
+      this.pos++;
+      while (!this.eof() && this.isIdentPart(this.peek())) this.pos++;
+      tags.push({
+        kind: "Identifier",
+        range: this.range(tagStart, this.pos),
+        name: this.text.slice(tagStart, this.pos),
+      });
+      this.skipSpaces();
+    }
+    const seen = new Set<string>();
+    for (const tag of tags) {
+      if (seen.has(tag.name)) {
+        throw new ParseError(
+          `duplicate tag name '${tag.name}'`,
+          positionToOffset(this.text, tag.range.start),
+        );
+      }
+      seen.add(tag.name);
+    }
+    this.expectSemiOrNewline();
+    return {
+      kind: "TagsDeclaration",
+      range: this.range(start, this.pos),
+      tags,
     };
   }
 

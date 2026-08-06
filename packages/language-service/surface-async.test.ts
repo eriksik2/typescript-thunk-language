@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource } from "@thunk/language-core";
 import {
@@ -29,7 +30,7 @@ function projectOpts(fileName: string, source: string) {
 
 describe("surface: async wrap", () => {
   const fileName = path.join(root, "examples/async-wrap.thunk");
-  const source = `import { wrap } from "@thunk/runtime"
+  const source = withPrelude(`import { wrap } from "@thunk/runtime"
 
 const program = thunk {
   const n = run wrap(() => Promise.resolve(1))
@@ -37,7 +38,7 @@ const program = thunk {
 }
 
 const result: Promise<number> = run program
-`;
+`);
 
   test("lower emits machine + preserves wrap import", () => {
     const lowered = lowerThunkSource(source, fileName);
@@ -63,9 +64,9 @@ const result: Promise<number> = run program
   });
 
   test("postfix Async annotation encodes [Async]", () => {
-    const src = `import { wrap } from "@thunk/runtime"
+    const src = withPrelude(`import { wrap } from "@thunk/runtime"
 const t: Thunk<number> Async = wrap(() => Promise.resolve(1))
-`;
+`);
     const lowered = lowerThunkSource(src, fileName);
     expect(lowered.generatedText).toContain("[Async]");
     expect(lowered.generatedText).toMatch(/import type \{[^}]*\bAsync\b/);

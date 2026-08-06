@@ -20,15 +20,20 @@ bun run build:editor
    The launch config uses `--extensionDevelopmentPath=packages/vscode` and opens `examples/`.
 3. In the Extension Development Host, open `examples/basic.thunk`.
 
+## Code Browser
+
+Activity bar **Thunk**: horizontal **Feature tags** toggles, then **Code Browser** (folder / nested feature tree / tags). **+ file** and **+ feature** open an editor with prelude + cursor on the name; Save creates the file.
+
 ## Manual F5 checklist
 
 Do these in the Extension Development Host after F5:
 
-1. **Hover on run binding** — On `value` in `const value = run random`, hover should show a type mentioning `number`.
-2. **Hover on thunk** — On `random` or `program`, hover should show **`Thunk<number>`** only (not `RuntimeThunk`, not `Protocols(Omit<…>)`, not `EmptyProtocols`).
-3. **Type error diagnostic** — Temporarily change the return to something invalid (e.g. `return value * "x"`). A TypeScript diagnostic should appear on the `.thunk` line.
-4. **Parse error** — Introduce a syntax error (e.g. remove a brace). A parse diagnostic should appear and the language server should stay alive.
-5. **Optional:** open `examples/requires.thunk` — hover on `fetchUser` should mention `Requires`.
+1. **Code Browser** — Open the Thunk activity-bar icon; confirm examples appear under feature `Examples` (and tags). Switch to Files / Tags; try Filter.
+2. **Hover on run binding** — On `value` in `const value = run random`, hover should show a type mentioning `number`.
+3. **Hover on thunk** — On `random` or `program`, hover should show **`Thunk<number>`** only (not `RuntimeThunk`, not `Protocols(Omit<…>)`, not `EmptyProtocols`).
+4. **Type error diagnostic** — Temporarily change the return to something invalid (e.g. `return value * "x"`). A TypeScript diagnostic should appear on the `.thunk` line.
+5. **Parse error** — Introduce a syntax error (e.g. remove a brace). A parse diagnostic should appear and the language server should stay alive.
+6. **Optional:** open `examples/requires.thunk` — hover on `fetchUser` should mention `Requires`.
 
 Revert smoke edits after checking.
 

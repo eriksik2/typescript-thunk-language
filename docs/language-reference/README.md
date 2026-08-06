@@ -26,7 +26,7 @@ Prefer this folder when you need **how a feature works**.
 - [**types/**](./types/README.md) — `Thunk<T>`, protocols, `Requires`
 - [**symbols/**](./symbols/README.md) — `symbol` declarations, branding, `Symbol.of`
 - [**environment/**](./environment/README.md) — `use`, `provide`, layers
-- [**modules/**](./modules/README.md) — imports, `@thunk/runtime` vs `/internal`
+- [**modules/**](./modules/README.md) — file prelude, imports, `@thunk/runtime` vs `/internal`
 - [**tooling/**](./tooling/README.md) — `thunk build` / `thunk run`, editor
 
 ## Examples in the repo

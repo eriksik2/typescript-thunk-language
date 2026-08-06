@@ -1,3 +1,5 @@
+file pipe of Examples
+
 const double = (n: number) => n * 2
 const add = (n: number, m: number) => n + m
 

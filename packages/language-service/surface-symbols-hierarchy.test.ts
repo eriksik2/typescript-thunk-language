@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource } from "@thunk/language-core";
 import {
@@ -30,7 +31,7 @@ function projectOpts(fileName: string, source: string) {
 
 describe("surface: hierarchical symbols", () => {
   const fileName = path.join(root, "examples/symbols-hierarchy.thunk");
-  const source = `import { Symbol } from "@thunk/runtime"
+  const source = withPrelude(`import { Symbol } from "@thunk/runtime"
 
 abstract symbol Animal {
   name: string
@@ -42,7 +43,7 @@ symbol Dog extends Animal {
 
 const dog = Dog({ name: "Rex", breed: "lab" })
 const asAnimal = Symbol.to(dog, Animal)
-`;
+`);
 
   test("lowers extends without parent type intersection", () => {
     const lowered = lowerThunkSource(source, fileName);
@@ -68,7 +69,7 @@ const asAnimal = Symbol.to(dog, Animal)
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
 
-    const bad = `import { Symbol } from "@thunk/runtime"
+    const bad = withPrelude(`import { Symbol } from "@thunk/runtime"
 
 abstract symbol Animal {
   name: string
@@ -78,7 +79,7 @@ symbol Dog extends Animal {
 }
 const dog = Dog({ name: "Rex", breed: "lab" })
 const bad: Animal = dog
-`;
+`);
     const badFile = path.join(root, "examples/symbols-hierarchy-bad.thunk");
     const badProject = createThunkProject(projectOpts(badFile, bad));
     const diags = badProject.getDiagnostics(badFile);
@@ -89,7 +90,7 @@ const bad: Animal = dog
 
 describe("surface: Failure hierarchy", () => {
   const fileName = path.join(root, "examples/failures.thunk");
-  const source = `import {
+  const source = withPrelude(`import {
   Failure,
   Defect,
   Symbol,
@@ -98,7 +99,7 @@ describe("surface: Failure hierarchy", () => {
 const d = Defect({ message: "boom" })
 const ok = Symbol.has(d, Failure)
 const asFailure = Symbol.to(d, Failure)
-`;
+`);
 
   test("Symbol.has / Symbol.to typecheck (no Failure assignability)", () => {
     const p = createThunkProject(projectOpts(fileName, source));

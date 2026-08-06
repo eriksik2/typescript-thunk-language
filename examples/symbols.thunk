@@ -1,3 +1,5 @@
+file symbols of Examples
+
 // Example: symbol branding (nominal over associated type)
 
 symbol Age = number

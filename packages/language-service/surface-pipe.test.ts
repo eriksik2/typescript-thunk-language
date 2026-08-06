@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource } from "@thunk/language-core";
 import {
@@ -29,7 +30,7 @@ function projectOpts(fileName: string, source: string) {
 
 describe("surface: pipe + ANF run", () => {
   const fileName = path.join(root, "examples/pipe.thunk");
-  const source = `const double = (n: number) => n * 2
+  const source = withPrelude(`const double = (n: number) => n * 2
 const add = (n: number, m: number) => n + m
 
 const tx = thunk {
@@ -48,7 +49,7 @@ const program = thunk {
   const n = 21 | double | add(1)
   return { v, name, n }
 }
-`;
+`);
 
   test("lower: pipe + ANF emit fragments", () => {
     const lowered = lowerThunkSource(source, fileName);

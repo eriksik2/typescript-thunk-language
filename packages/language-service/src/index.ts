@@ -219,3 +219,16 @@ export function hoverAtOffset(
 ): HoverResult | undefined {
   return project.hover(fileName, offsetToPosition(sourceText, offset));
 }
+
+export {
+  extractThunkFileMeta,
+  indexThunkWorkspace,
+  buildFeatureRegistry,
+  validateMemberPlacement,
+  type ThunkFileMeta,
+  type ThunkWorkspaceIndex,
+  type FeatureTreeNode,
+  type FeatureDef,
+  type FeaturePlacementDiagnostic,
+  type FeatureRegistry,
+} from "./workspace-index";

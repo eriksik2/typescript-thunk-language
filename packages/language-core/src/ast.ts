@@ -2,6 +2,10 @@
  * Thunk AST.
  *
  * Supported:
+ *   feature Name             (*.feature.thunk prelude; root feature)
+ *   feature Name of A.B      (subfeature of qualified parent)
+ *   file Name of A.B         (code file prelude — member of a feature)
+ *   tags Tag1 Tag2           (optional, immediately after feature/file)
  *   import { … } from "…"
  *   import type { … } from "…"
  *   const name [: Type Requires(...) Once] = thunk { ... }
@@ -34,6 +38,9 @@ export interface SourceFile {
 }
 
 export type Statement =
+  | FeatureDeclaration
+  | FileDeclaration
+  | TagsDeclaration
   | ImportDeclaration
   | VariableStatement
   | ReturnStatement
@@ -47,6 +54,33 @@ export type Statement =
   | ForStatement
   | BreakStatement
   | ContinueStatement;
+
+/** `feature Name` | `feature Name of Parent.Path` — feature definition prelude. */
+export interface FeatureDeclaration {
+  readonly kind: "FeatureDeclaration";
+  readonly range: Range;
+  readonly name: Identifier;
+  /** Parent path segments after `of` (e.g. `BankImportSystem.Parser` → two idents). */
+  readonly ofPath?: readonly Identifier[];
+}
+
+/**
+ * `file Name of Feature.Path` — code-file prelude (member of a feature).
+ * `of` path is required and names the owning feature (qualified).
+ */
+export interface FileDeclaration {
+  readonly kind: "FileDeclaration";
+  readonly range: Range;
+  readonly name: Identifier;
+  readonly ofPath: readonly Identifier[];
+}
+
+/** `tags Tag1 Tag2` — optional prelude tags (erased on lower). */
+export interface TagsDeclaration {
+  readonly kind: "TagsDeclaration";
+  readonly range: Range;
+  readonly tags: readonly Identifier[];
+}
 
 /**
  * Opaque TypeScript `type Name = …` / `type Name<…> = …` passthrough.

@@ -1,6 +1,6 @@
 import { wrap } from "@thunk/runtime";
 import { succeed, defer, runEffect, machine, execute } from "@thunk/runtime/internal";
-import type { ThunkReturnType } from "@thunk/types";
+import type { ThunkReturnType, InferLet } from "@thunk/types";
 
 function promiseFn(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -11,18 +11,22 @@ const program = defer(() => {
 let __state = 0;
 const __t0 = false ? wrap(() => promiseFn()) : undefined;
 let res: ThunkReturnType<NonNullable<typeof __t0>>;
-let tries: number;
+const __v0 = false ? (0) : undefined;
+let tries: InferLet<NonNullable<typeof __v0>>;
+const __v1 = false ? (true as const) : undefined;
+let isTrue: InferLet<NonNullable<typeof __v1>>;
 return machine(function (__resume?: any) {
 while (true) {
 switch (__state) {
 case 0:
 tries = 0;
+isTrue = true as const;
 __state = 2;
 continue;
 case 1:
 return succeed(undefined as void);
 case 2:
-if (true) {
+if (isTrue) {
 __state = 3;
 continue;
 } else {
@@ -60,11 +64,11 @@ throw new Error("invalid thunk state");
 }
 });
 });
-const __r0 = execute(wrap(() => promiseFn()));
 const programAsFn = async () => {
-  let tries: number = 0;
-  while (true) {
-    const res = await __r0
+  let tries = 0;
+  let isTrue = true as const;
+  while (isTrue) {
+    const res = await promiseFn()
     if (res) return tries
     tries++
     if (tries > 20) return tries

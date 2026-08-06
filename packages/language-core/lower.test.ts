@@ -6,25 +6,26 @@ import {
   parseThunkSource,
   positionToOffset,
 } from "./src/index";
+import { bodyStmts, withPrelude } from "./test-prelude";
 
 describe("parse", () => {
   test("parses thunk + run", () => {
-    const ast = parseThunkSource(`const program = thunk {
+    const ast = parseThunkSource(withPrelude(`const program = thunk {
   const value = run random
   return value * 2
 }
-`);
-    expect(ast.statements).toHaveLength(1);
-    const init = (ast.statements[0] as { initializer: { kind: string; body: unknown[] } })
+`));
+    expect(bodyStmts(ast)).toHaveLength(1);
+    const init = (bodyStmts(ast)[0] as { initializer: { kind: string; body: unknown[] } })
       .initializer;
     expect(init.kind).toBe("ThunkExpression");
     expect(init.body).toHaveLength(2);
   });
 
   test("parses symbol alias and object forms", () => {
-    const alias = parseThunkSource(`symbol Age = number\n`);
-    expect(alias.statements[0]?.kind).toBe("SymbolDeclaration");
-    const aliasDecl = alias.statements[0] as {
+    const alias = parseThunkSource(withPrelude(`symbol Age = number\n`));
+    expect(bodyStmts(alias)[0]?.kind).toBe("SymbolDeclaration");
+    const aliasDecl = bodyStmts(alias)[0] as {
       name: { name: string };
       isAbstract: boolean;
       associatedType: { form: string; text: string };
@@ -34,11 +35,11 @@ describe("parse", () => {
     expect(aliasDecl.associatedType.form).toBe("alias");
     expect(aliasDecl.associatedType.text).toBe("number");
 
-    const obj = parseThunkSource(`symbol Database {
+    const obj = parseThunkSource(withPrelude(`symbol Database {
   name: string
 }
-`);
-    const objDecl = obj.statements[0] as {
+`));
+    const objDecl = bodyStmts(obj)[0] as {
       associatedType: { form: string; text: string };
     };
     expect(objDecl.associatedType.form).toBe("object");
@@ -46,16 +47,16 @@ describe("parse", () => {
   });
 
   test("parses abstract symbol and extends", () => {
-    const src = parseThunkSource(`abstract symbol Failure {
+    const src = parseThunkSource(withPrelude(`abstract symbol Failure {
   message: string
 }
 symbol Defect extends Failure
 symbol Error extends Failure {
   code: number
 }
-`);
-    expect(src.statements).toHaveLength(3);
-    const failure = src.statements[0] as {
+`));
+    expect(bodyStmts(src)).toHaveLength(3);
+    const failure = bodyStmts(src)[0] as {
       kind: string;
       name: { name: string };
       isAbstract: boolean;
@@ -67,13 +68,13 @@ symbol Error extends Failure {
     expect(failure.extendsName).toBeUndefined();
     expect(failure.associatedType?.text).toContain("message: string");
 
-    const defect = src.statements[1] as typeof failure;
+    const defect = bodyStmts(src)[1] as typeof failure;
     expect(defect.isAbstract).toBe(false);
     expect(defect.name.name).toBe("Defect");
     expect(defect.extendsName?.name).toBe("Failure");
     expect(defect.associatedType).toBeUndefined();
 
-    const err = src.statements[2] as typeof failure;
+    const err = bodyStmts(src)[2] as typeof failure;
     expect(err.extendsName?.name).toBe("Failure");
     expect(err.associatedType?.text).toContain("code: number");
   });
@@ -81,11 +82,11 @@ symbol Error extends Failure {
 
 describe("lower", () => {
   test("lowers run to state machine (runEffect + machine)", () => {
-    const lowered = lowerThunkSource(`const program = thunk {
+    const lowered = lowerThunkSource(withPrelude(`const program = thunk {
   const value = run random
   return value * 2
 }
-`);
+`));
     expect(lowered.generatedText).toContain("runEffect(");
     expect(lowered.generatedText).toContain("machine(");
     expect(lowered.generatedText).toContain("succeed(");
@@ -96,9 +97,9 @@ describe("lower", () => {
   });
 
   test("lowers symbol declaration to brand + __makeSymbol", () => {
-    const lowered = lowerThunkSource(`symbol Age = number
+    const lowered = lowerThunkSource(withPrelude(`symbol Age = number
 const a: Age = Age(30)
-`);
+`));
     expect(lowered.generatedText).toContain("__makeSymbol");
     expect(lowered.generatedText).toContain("declare const __brand_Age");
     expect(lowered.generatedText).toContain("type Age = number &");
@@ -108,11 +109,11 @@ const a: Age = Age(30)
   });
 
   test("lowers abstract symbol + extends with parent brand intersection", () => {
-    const lowered = lowerThunkSource(`abstract symbol Failure {
+    const lowered = lowerThunkSource(withPrelude(`abstract symbol Failure {
   message: string
 }
 symbol Defect extends Failure
-`);
+`));
     expect(lowered.generatedText).toContain("abstract: true");
     expect(lowered.generatedText).toContain("parent: Failure");
     expect(lowered.generatedText).toContain("__abstract: true");
@@ -128,7 +129,7 @@ symbol Defect extends Failure
   });
 
   test("lowers requires.thunk-style symbol + use", () => {
-    const lowered = lowerThunkSource(`symbol Database {
+    const lowered = lowerThunkSource(withPrelude(`symbol Database {
   name: string
 }
 
@@ -136,19 +137,19 @@ const fetchUser = thunk {
   const db = run use(Database)
   return db.name
 }
-`);
+`));
     expect(lowered.generatedText).toContain("__makeSymbol");
     expect(lowered.generatedText).toContain("use(Database)");
     expect(lowered.generatedText).toContain("type Database =");
   });
 
   test("parses and lowers import declarations", () => {
-    const source = `import { use, provide, layerOf } from "@thunk/runtime"
+    const source = withPrelude(`import { use, provide, layerOf } from "@thunk/runtime"
 const x = use
-`;
+`);
     const ast = parseThunkSource(source);
-    expect(ast.statements[0]?.kind).toBe("ImportDeclaration");
-    const imp = ast.statements[0] as {
+    expect(bodyStmts(ast)[0]?.kind).toBe("ImportDeclaration");
+    const imp = bodyStmts(ast)[0] as {
       module: string;
       specifiers: { local: string }[];
     };
@@ -169,10 +170,10 @@ const x = use
   });
 
   test("auto-injects Thunk type without author import", () => {
-    const lowered = lowerThunkSource(`const program: Thunk<number> = thunk {
+    const lowered = lowerThunkSource(withPrelude(`const program: Thunk<number> = thunk {
   return 1
 }
-`);
+`));
     expect(lowered.generatedText).toContain(
       'import type { Thunk } from "@thunk/types"',
     );
@@ -180,15 +181,15 @@ const x = use
   });
 
   test("parses and lowers nested thunk inside object literal", () => {
-    const source = `const DatabaseLive = Database({
+    const source = withPrelude(`const DatabaseLive = Database({
   name: "live",
   getUser: (id: string) => thunk {
     return { id, name: "Ada" }
   }
 })
-`;
+`);
     const ast = parseThunkSource(source);
-    const stmt = ast.statements[0] as {
+    const stmt = bodyStmts(ast)[0] as {
       initializer: {
         kind: string;
         parts: { kind: string; expression?: { kind: string } }[];
@@ -209,15 +210,15 @@ const x = use
   });
 
   test("run operand is a full expression (member call like await)", () => {
-    const source = `const fetchUser = thunk {
+    const source = withPrelude(`const fetchUser = thunk {
   const db = run use(Database)
   const user = run db.getUser("1234")
   return db.name + " " + user.name
 }
-`;
+`);
     const ast = parseThunkSource(source);
     const body = (
-      ast.statements[0] as {
+      bodyStmts(ast)[0] as {
         initializer: { body: { initializer?: { kind: string; expression?: { kind: string; text?: string } } }[] };
       }
     ).initializer.body;
@@ -238,10 +239,10 @@ const x = use
   });
 
   test("return run lowers to runEffect then succeed(__resume)", () => {
-    const lowered = lowerThunkSource(`const program = thunk {
+    const lowered = lowerThunkSource(withPrelude(`const program = thunk {
   return run provide(fetchUser, db)
 }
-`);
+`));
     expect(lowered.generatedText).toContain(
       "return runEffect(provide(fetchUser, db))",
     );
@@ -253,7 +254,7 @@ const x = use
   });
 
   test("if / for / break / continue lower to state transitions", () => {
-    const lowered = lowerThunkSource(`const program = thunk {
+    const lowered = lowerThunkSource(withPrelude(`const program = thunk {
   let total = 0
   for (let i = 0; i < 3; i = i + 1) {
     const v = run step(i)
@@ -267,7 +268,7 @@ const x = use
   }
   return total
 }
-`);
+`));
     expect(lowered.generatedText).toContain("machine(");
     expect(lowered.generatedText).toContain("runEffect(step(i))");
     expect(lowered.generatedText).toContain("continue;");
@@ -280,7 +281,7 @@ const x = use
   });
 
   test("postfix ++ does not swallow the next if/return statements", () => {
-    const source = `const program = thunk {
+    const source = withPrelude(`const program = thunk {
   let tries = 0
   while (true) {
     const x = run step()
@@ -288,9 +289,9 @@ const x = use
     if (tries > 20) return tries
   }
 }
-`;
+`);
     const ast = parseThunkSource(source);
-    const thunk = (ast.statements[0] as { initializer: { body: unknown[] } })
+    const thunk = (bodyStmts(ast)[0] as { initializer: { body: unknown[] } })
       .initializer;
     const whileStmt = thunk.body[1] as {
       kind: string;
@@ -313,10 +314,10 @@ const x = use
   });
 
   test("return run lower casts resume yield (not bare __resume)", () => {
-    const lowered = lowerThunkSource(`const program = thunk {
+    const lowered = lowerThunkSource(withPrelude(`const program = thunk {
   return run wrap(() => Promise.resolve(true))
 }
-`);
+`));
     expect(lowered.generatedText).toMatch(
       /return succeed\(__resume as ThunkReturnType<NonNullable<typeof __t\d+>>\);/,
     );
@@ -326,10 +327,10 @@ const x = use
   });
 
   test("symbol name mappings land on generated Database identifier", () => {
-    const source = `symbol Database {
+    const source = withPrelude(`symbol Database {
   name: string
 }
-`;
+`);
     const lowered = lowerThunkSource(source, "sym.thunk");
     const nameOffset = source.indexOf("Database");
     for (let i = 0; i < "Database".length; i++) {

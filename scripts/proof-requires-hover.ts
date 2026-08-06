@@ -14,7 +14,9 @@ const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
 const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `import { use, provide } from "@thunk/runtime"
+const source = `file requires of Examples
+
+import { use, provide } from "@thunk/runtime"
 
 symbol Database {
   name: string

@@ -13,6 +13,20 @@ export {
   encodeThunkTypeAnnotation,
 } from "./protocol-encode";
 export {
+  featureLocalName,
+  featureParentQualified,
+  featureQualifiedName,
+  fileOwningFeature,
+  formatFeaturePreludeLine,
+  formatFilePreludeLine,
+  emptyFeaturePreludeSnippet,
+  emptyFilePreludeSnippet,
+  memberFilePrelude,
+  isFeatureThunkFile,
+  featureFileLocalName,
+  ofPathFromQualified,
+} from "./feature";
+export {
   type Position,
   type Range,
   type Mapping,

@@ -1,3 +1,5 @@
+file basic of Examples
+
 const random = thunk {
   return Math.random()
 }

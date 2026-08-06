@@ -227,6 +227,9 @@ class CfgBuilder {
       case "ProtocolDeclaration":
       case "SymbolDeclaration":
       case "TypeAliasDeclaration":
+      case "FeatureDeclaration":
+      case "FileDeclaration":
+      case "TagsDeclaration":
         throw new Error(`${stmt.kind} is only valid at top level`);
     }
   }
@@ -488,6 +491,11 @@ class Emitter {
 
   private emitTopLevelStatement(stmt: Statement): void {
     switch (stmt.kind) {
+      case "FeatureDeclaration":
+      case "FileDeclaration":
+      case "TagsDeclaration":
+        // Navigation metadata only — erased from generated TS.
+        return;
       case "ImportDeclaration":
         this.emitImportDeclaration(stmt);
         return;
@@ -1085,6 +1093,9 @@ class Emitter {
       case "ProtocolDeclaration":
       case "SymbolDeclaration":
       case "TypeAliasDeclaration":
+      case "FeatureDeclaration":
+      case "FileDeclaration":
+      case "TagsDeclaration":
         throw new Error(`${stmt.kind} is only valid at top level`);
     }
   }

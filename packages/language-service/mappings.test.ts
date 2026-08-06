@@ -11,10 +11,11 @@ import {
   originalToGenerated,
   positionToOffset,
 } from "@thunk/language-core";
+import { withPrelude } from "../language-core/test-prelude";
 import { toVolarMappings } from "./src/volar/mappings";
 import { ThunkVirtualCode } from "./src/volar/language";
 
-const basicSource = `const random = thunk {
+const basicSource = withPrelude(`const random = thunk {
   return Math.random()
 }
 
@@ -22,7 +23,7 @@ const program = thunk {
   const value = run random
   return value * 2
 }
-`;
+`);
 
 describe("toVolarMappings", () => {
   test("maps generated `value` binding back to original (and reverse)", () => {
@@ -65,7 +66,7 @@ describe("toVolarMappings", () => {
 
   test("planted generated error offset resolves to an original line", () => {
     // Break the return expression type in source, then map a generated span back.
-    const broken = `const random = thunk {
+    const broken = withPrelude(`const random = thunk {
   return Math.random()
 }
 
@@ -73,7 +74,7 @@ const program = thunk {
   const value = run random
   return value * "x"
 }
-`;
+`);
     const lowered = lowerThunkSource(broken, "broken.thunk");
     const volarMaps = toVolarMappings(
       lowered.sourceMap,

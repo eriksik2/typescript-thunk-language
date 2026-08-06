@@ -1,3 +1,5 @@
+file asyncWrap of Examples
+
 /**
  * Async: wrap Promise → Thunk with Async protocol.
  *
@@ -13,8 +15,9 @@ function promiseFn(): Promise<boolean> {
 }
 
 const program = thunk {
-  let tries = 0
-  while (true) {
+  let tries = 0;
+  let isTrue = true as const;
+  while (isTrue) {
     const res = run wrap(() => promiseFn())
     if (res) return tries
     tries++
@@ -24,7 +27,8 @@ const program = thunk {
 
 const programAsFn = async () => {
   let tries = 0;
-  while (true) {
+  let isTrue = true as const;
+  while (isTrue) {
     const res = await promiseFn()
     if (res) return tries
     tries++

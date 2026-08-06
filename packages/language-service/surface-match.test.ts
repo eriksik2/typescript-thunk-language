@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource, parseThunkSource } from "@thunk/language-core";
 import {
@@ -27,7 +28,7 @@ function projectOpts(fileName: string, source: string) {
   } as const;
 }
 
-const matchExample = `import {
+const matchExample = withPrelude(`import {
   Ok,
   Err,
   Error,
@@ -82,7 +83,7 @@ const showAppErr = (e: AppErr): string =>
 const shapes = describeShape(Circle({ radius: 3 }))
 const opt = unwrapOption(Some(42))
 const res = showResult(Ok(7))
-`;
+`);
 
 describe("surface: match v1", () => {
   const fileName = path.join(root, "examples/match.thunk");
@@ -118,12 +119,12 @@ describe("surface: match v1", () => {
   });
 
   test("non-exhaustive match is a type error", () => {
-    const src = `import { Ok, Err, type Result } from "@thunk/runtime"
+    const src = withPrelude(`import { Ok, Err, type Result } from "@thunk/runtime"
 const bad = (r: Result<number, string>): string =>
   match (r) {
     Ok: infer n => "ok " + n,
   }
-`;
+`);
     const p = createThunkProject(projectOpts(fileName, src));
     const diags = p.getDiagnostics(fileName);
     expect(diags.length).toBeGreaterThan(0);

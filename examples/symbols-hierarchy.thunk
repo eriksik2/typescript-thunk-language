@@ -1,3 +1,5 @@
+file symbolsHierarchy of Examples
+
 // Hierarchical symbols (extends) — no value LSP
 
 import { Symbol } from "@thunk/runtime"

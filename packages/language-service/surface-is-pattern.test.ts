@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import { lowerThunkSource } from "@thunk/language-core";
 import {
@@ -29,7 +30,7 @@ function projectOpts(fileName: string, source: string) {
 
 describe("surface: is pattern", () => {
   const fileName = path.join(root, "examples/is-pattern.thunk");
-  const source = `import { Ok, Err, type Result } from "@thunk/runtime"
+  const source = withPrelude(`import { Ok, Err, type Result } from "@thunk/runtime"
 
 const describe = (r: Result<number, string>) => thunk {
   if (r is Err: infer e) {
@@ -43,7 +44,7 @@ const describe = (r: Result<number, string>) => thunk {
 
 const sample = run describe(Ok(3))
 const flag = Err("x") is Err
-`;
+`);
 
   test("lower emits __symbolIs + bindings", () => {
     const lowered = lowerThunkSource(source, fileName);

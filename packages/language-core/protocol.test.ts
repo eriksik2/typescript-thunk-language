@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { parseThunkSource, lowerThunkSource } from "./src/index";
+import { bodyStmts, withPrelude } from "./test-prelude";
 import { encodeThunkTypeAnnotation } from "./src/protocol-encode";
 
 describe("postfix protocols", () => {
   test("parses Requires + Once on variable annotation", () => {
-    const ast = parseThunkSource(`const op: Thunk<User>
+    const ast = parseThunkSource(withPrelude(`const op: Thunk<User>
   Requires(Database | Logger)
   Once
 = thunk {
   return 1 as unknown as User
 }
-`);
-    const stmt = ast.statements[0] as {
+`));
+    const stmt = bodyStmts(ast)[0] as {
       kind: string;
       typeAnnotation?: {
         baseText: string;
@@ -30,12 +31,12 @@ describe("postfix protocols", () => {
   });
 
   test("lowers postfix to ProtocolBag encoding", () => {
-    const lowered = lowerThunkSource(`const op: Thunk<number>
+    const lowered = lowerThunkSource(withPrelude(`const op: Thunk<number>
   Requires(Database)
 = thunk {
   return 1
 }
-`);
+`));
     expect(lowered.generatedText).toContain(
       'import type { Thunk, Requires } from "@thunk/types"',
     );
@@ -74,13 +75,13 @@ describe("postfix protocols", () => {
 
 describe("protocol declarations", () => {
   test("parses and lowers protocol Requires", () => {
-    const source = `protocol Requires<Tags extends Tag<any>> {
+    const source = withPrelude(`protocol Requires<Tags extends Tag<any>> {
   bind<A, B>: A | B;
   execute<A>: A extends never ? never : CompileError<\`Unsatisfied\`>;
 }
-`;
+`);
     const ast = parseThunkSource(source);
-    expect(ast.statements[0]?.kind).toBe("ProtocolDeclaration");
+    expect(bodyStmts(ast)[0]?.kind).toBe("ProtocolDeclaration");
     const lowered = lowerThunkSource(source);
     expect(lowered.generatedText).toContain("type Requires_bind");
     expect(lowered.generatedText).toContain("type Requires_execute");

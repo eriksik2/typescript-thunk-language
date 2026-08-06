@@ -9,7 +9,12 @@
     "vscode": "^1.82.0"
   },
   "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:thunk"],
+  "activationEvents": [
+    "onLanguage:thunk",
+    "onView:thunk.codeBrowser",
+    "onView:thunk.tagFilters",
+    "workspaceContains:**/*.thunk"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "languages": [
@@ -26,7 +31,136 @@
         "scopeName": "source.thunk",
         "path": "./syntaxes/thunk.tmLanguage.json"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "thunk",
+          "title": "Thunk",
+          "icon": "media/thunk.svg"
+        }
+      ]
+    },
+    "views": {
+      "thunk": [
+        {
+          "type": "webview",
+          "id": "thunk.tagFilters",
+          "name": "Feature tags",
+          "visibility": "visible"
+        },
+        {
+          "id": "thunk.codeBrowser",
+          "name": "Code Browser"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "thunk.codeBrowser.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.setModeFiles",
+        "title": "Group by Files",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.setModeFeatures",
+        "title": "Group by Features",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.setModeTags",
+        "title": "Group by Tags",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.filter",
+        "title": "Filter Code Browser",
+        "icon": "$(filter)",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.clearFilter",
+        "title": "Clear Code Browser Filter",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.addFile",
+        "title": "New Thunk File",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.addFeature",
+        "title": "New Feature",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.commitNewFeature",
+        "title": "Save New Feature",
+        "category": "Thunk"
+      },
+      {
+        "command": "thunk.codeBrowser.commitNewFile",
+        "title": "Save New File",
+        "category": "Thunk"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "thunk.codeBrowser.commitNewFeature",
+        "key": "cmd+s",
+        "mac": "cmd+s",
+        "win": "ctrl+s",
+        "linux": "ctrl+s",
+        "when": "thunk.pendingFeatureCreate && editorTextFocus"
+      },
+      {
+        "command": "thunk.codeBrowser.commitNewFile",
+        "key": "cmd+s",
+        "mac": "cmd+s",
+        "win": "ctrl+s",
+        "linux": "ctrl+s",
+        "when": "thunk.pendingFileCreate && editorTextFocus"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "thunk.codeBrowser.filter",
+          "when": "view == thunk.codeBrowser",
+          "group": "navigation@1"
+        },
+        {
+          "command": "thunk.codeBrowser.refresh",
+          "when": "view == thunk.codeBrowser",
+          "group": "navigation@2"
+        },
+        {
+          "command": "thunk.codeBrowser.setModeFiles",
+          "when": "view == thunk.codeBrowser",
+          "group": "1_mode@1"
+        },
+        {
+          "command": "thunk.codeBrowser.setModeFeatures",
+          "when": "view == thunk.codeBrowser",
+          "group": "1_mode@2"
+        },
+        {
+          "command": "thunk.codeBrowser.setModeTags",
+          "when": "view == thunk.codeBrowser",
+          "group": "1_mode@3"
+        },
+        {
+          "command": "thunk.codeBrowser.clearFilter",
+          "when": "view == thunk.codeBrowser",
+          "group": "2_filter"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node scripts/build.mjs",

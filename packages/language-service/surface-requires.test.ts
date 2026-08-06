@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { withPrelude } from "../language-core/test-prelude";
 import path from "node:path";
 import {
   lowerThunkSource,
@@ -23,7 +24,7 @@ const typesPath = path.join(root, "packages/types/src/index.ts");
 const runtimePath = path.join(root, "packages/runtime/src/index.ts");
 const internalPath = path.join(root, "packages/runtime/src/internal.ts");
 
-const source = `import { use, provide } from "@thunk/runtime"
+const source = withPrelude(`import { use, provide } from "@thunk/runtime"
 
 symbol Database {
   name: string
@@ -44,7 +45,7 @@ const program: Thunk<string> = provide(
 )
 
 const result = run program
-`;
+`);
 
 function projectOpts() {
   return {
@@ -115,14 +116,14 @@ describe("surface: requires.thunk", () => {
   });
 
   test("use without import → cannot find name", () => {
-    const noImport = `symbol Database {
+    const noImport = withPrelude(`symbol Database {
   name: string
 }
 const fetchUser = thunk {
   const db = run use(Database)
   return db.name
 }
-`;
+`);
     const p = createThunkProject({
       files: { [fileName]: noImport },
       moduleMap: {
@@ -186,7 +187,7 @@ const fetchUser = thunk {
   });
 
   test("nested thunk in object literal typechecks and lowers", () => {
-    const nested = `import { use, provide } from "@thunk/runtime"
+    const nested = withPrelude(`import { use, provide } from "@thunk/runtime"
 
 interface User {
   id: string
@@ -212,7 +213,7 @@ const program: Thunk<string> = provide(
   },
   DatabaseLive,
 )
-`;
+`);
     const p = createThunkProject({
       files: { [fileName]: nested },
       moduleMap: {
@@ -235,7 +236,7 @@ const program: Thunk<string> = provide(
   });
 
   test("run db.getUser(...) typechecks like await (full operand)", () => {
-    const src = `import { use, provide } from "@thunk/runtime"
+    const src = withPrelude(`import { use, provide } from "@thunk/runtime"
 
 interface User {
   id: string
@@ -261,7 +262,7 @@ const fetchUser = thunk {
 }
 
 const program: Thunk<string> = provide(fetchUser, DatabaseLive)
-`;
+`);
     const p = createThunkProject({
       files: { [fileName]: src },
       moduleMap: {
