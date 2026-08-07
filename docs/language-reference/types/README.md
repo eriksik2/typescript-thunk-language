@@ -10,7 +10,7 @@ Type-level surface of Thunk programs (checked via lowered TypeScript).
 | [Protocols overview](./protocols-overview.md) | Protocol bags & postfix syntax |
 | [Requires](./requires.md) | Requirement protocol |
 | [Async](./async.md) | Flag protocol — `execute` → `Promise<T>` |
-| [Result](./result.md) | `Ok` / `Err` / `Result<A, E>` |
+| [Fallibility](./fallibility.md) | Error-subtype unions; `run` vs `try` |
 
 ## Related
 

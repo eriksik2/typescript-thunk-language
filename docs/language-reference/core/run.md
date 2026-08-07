@@ -32,7 +32,7 @@ The operand is a **full expression** (identifier, call, member access, nested `t
 - Nested / expression-position `run` is normalized (**ANF**) to statement `const __rN = run …` before machine lowering, so `foo(run a)`, `(run t).x`, and `(run tx) | f` all work.
 - [`|`](./pipe.md) binds tighter than `run`: `run tx | f` means `run (tx | f)`, which is **not** `(run tx) | f`.
 
-`try` / `catch` / `finally` are **out of scope** for now (handler/finalizer state is a separate design).
+`try` sugar (Error early-return) is documented in [`try`](./try.md). JS `try` / `catch` / `finally` **blocks** are **out of scope** for now (handler/finalizer state is a separate design).
 
 Promise interop: [`wrap`](./wrap.md) (introduces [`Async`](../types/async.md)).
 

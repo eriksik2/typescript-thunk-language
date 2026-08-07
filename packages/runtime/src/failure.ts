@@ -9,7 +9,7 @@
  * ```
  *
  * Hierarchy is identity pedigree — not value subtyping:
- * `Symbol.has(defect, Failure)` is true; `const f: Failure = defect` is not.
+ * `Symbol.isAny(defect, Failure)` is true; `const f: Failure = defect` is not.
  *
  * Import from `@thunk/runtime`. The `Error` export shadows global `Error` when
  * imported by name — use `globalThis.Error` for the platform constructor.
@@ -34,7 +34,7 @@ export type Failure = FailurePayload & {
 
 /**
  * Abstract Failure identity — not callable.
- * Still participates in `Symbol.has` / `Symbol.extends` / `Symbol.to`.
+ * Still participates in `Symbol.isAny` / `Symbol.extends` / `Symbol.to`.
  */
 export const Failure: {
   readonly key: symbol;

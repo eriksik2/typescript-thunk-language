@@ -1,11 +1,6 @@
 file match of Examples
 
-import {
-  Ok,
-  Err,
-  Error,
-  type Result,
-} from "@thunk/runtime"
+import { Error } from "@thunk/runtime"
 
 // --- Option (example-local generic symbols) ---
 symbol Some<T> = T
@@ -43,21 +38,22 @@ const unwrapOption = (o: Option<number>): number =>
     None => 0,
   }
 
-const showResult = (r: Result<number, string>): string =>
-  match (r) {
-    Ok: infer n => "ok " + n,
-    Err: infer e => "err " + e,
-  }
-
 const showAppErr = (e: AppErr): string =>
   match (e) {
     NotFound { path: infer p, message: infer m } => "missing " + p + ": " + m,
     Conflict { resource: infer r, message: infer m } => "conflict " + r + ": " + m,
   }
 
+const classify = (v: number | AppErr): string => {
+  if (v is any Error) {
+    return showAppErr(v)
+  }
+  return "n=" + v
+}
+
 const shapes = describeShape(Circle({ radius: 3 }))
 const opt = unwrapOption(Some(42))
-const res = showResult(Ok(7))
 const err = showAppErr(
   NotFound({ message: "gone", path: "/x" }),
 )
+const mixed = classify(7)

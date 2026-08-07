@@ -1,13 +1,20 @@
 /**
- * ANF normalization: lift expression-position `run` to statement
- * `const __rN = run …` so the state-machine lowerer only sees statement-shaped
- * run sites.
+ * ANF normalization: lift expression-position `run` / `try` to statement
+ * form so the state-machine lowerer only sees statement-shaped run sites.
+ *
+ * `try expr` desugars to:
+ *   const __tryN = run expr
+ *   if (__tryN is any Error) return __tryN
+ *   … use __excludeIsAny(__tryN, __ThunkError) …
  */
 
 import type {
   Expression,
   ExpressionStatement,
   Identifier,
+  IfStatement,
+  IsExpression,
+  ReturnStatement,
   Statement,
   TsExpression,
   TsExpressionPart,
@@ -15,8 +22,16 @@ import type {
 } from "./ast";
 import type { Range } from "./source-map";
 
-export function normalizeAnf(body: readonly Statement[]): Statement[] {
-  const ctx = { nextId: 0 };
+export type AnfOptions = {
+  /** `try` is only legal inside thunk bodies. */
+  readonly allowTry?: boolean;
+};
+
+export function normalizeAnf(
+  body: readonly Statement[],
+  options?: AnfOptions,
+): Statement[] {
+  const ctx: AnfCtx = { nextId: 0, allowTry: options?.allowTry ?? false };
   const out: Statement[] = [];
   for (const stmt of body) {
     out.push(...normalizeStatement(stmt, ctx));
@@ -24,7 +39,7 @@ export function normalizeAnf(body: readonly Statement[]): Statement[] {
   return out;
 }
 
-type AnfCtx = { nextId: number };
+type AnfCtx = { nextId: number; allowTry: boolean };
 
 function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
   const lifted: Statement[] = [];
@@ -34,6 +49,21 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
   switch (stmt.kind) {
     case "VariableStatement": {
       const init = stmt.initializer;
+      if (init.kind === "TryExpression") {
+        assertTryAllowed(ctx, init.range);
+        const inner = liftRuns(init.expression, false, lifted, ctx);
+        const tmp = freshId(ctx, init.range, "__try");
+        lifted.push(runBinding(tmp, inner, init.range));
+        lifted.push(earlyReturnIfError(tmp, init.range));
+        // Narrow via __excludeIsAny — state machine splits lose TS narrowing.
+        return [
+          ...lifted,
+          {
+            ...stmt,
+            initializer: excludeIsAnyCall(tmp, init.range),
+          },
+        ];
+      }
       if (init.kind === "RunExpression") {
         const inner = liftRuns(init.expression, false, lifted, ctx);
         const next: VariableStatement = {
@@ -47,6 +77,27 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
     }
     case "ReturnStatement": {
       if (!stmt.expression) return [...lifted, stmt];
+      if (stmt.expression.kind === "TryExpression") {
+        // `return try x` ≡ `return run x` (union already includes Error arms).
+        assertTryAllowed(ctx, stmt.expression.range);
+        const inner = liftRuns(
+          stmt.expression.expression,
+          false,
+          lifted,
+          ctx,
+        );
+        return [
+          ...lifted,
+          {
+            ...stmt,
+            expression: {
+              kind: "RunExpression",
+              range: stmt.expression.range,
+              expression: inner,
+            },
+          },
+        ];
+      }
       if (stmt.expression.kind === "RunExpression") {
         const inner = liftRuns(
           stmt.expression.expression,
@@ -66,6 +117,19 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
       return [...lifted, { ...stmt, expression }];
     }
     case "ExpressionStatement": {
+      if (stmt.expression.kind === "TryExpression") {
+        assertTryAllowed(ctx, stmt.expression.range);
+        const inner = liftRuns(
+          stmt.expression.expression,
+          false,
+          lifted,
+          ctx,
+        );
+        const tmp = freshId(ctx, stmt.expression.range, "__try");
+        lifted.push(runBinding(tmp, inner, stmt.expression.range));
+        lifted.push(earlyReturnIfError(tmp, stmt.expression.range));
+        return lifted;
+      }
       if (stmt.expression.kind === "RunExpression") {
         const inner = liftRuns(
           stmt.expression.expression,
@@ -85,7 +149,12 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
     case "BlockStatement":
       return [
         ...lifted,
-        { ...stmt, statements: normalizeAnf(stmt.statements) },
+        {
+          ...stmt,
+          statements: normalizeAnf(stmt.statements, {
+            allowTry: ctx.allowTry,
+          }),
+        },
       ];
     case "IfStatement": {
       const condition = lift(stmt.condition);
@@ -105,9 +174,9 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
       ];
     }
     case "WhileStatement": {
-      // Re-evaluate expression-position `run` each iteration by rewriting
-      // `while (cond) body` → `while (true) { const __rN = …; if (!__rN) break; body }`
-      // when `cond` contains a nested run.
+      // Re-evaluate expression-position `run`/`try` each iteration by rewriting
+      // `while (cond) body` → `while (true) { …lifts…; if (!cond) break; body }`
+      // when `cond` contains a nested run/try.
       if (expressionContainsRun(stmt.condition)) {
         const condLifted: Statement[] = [];
         const condition = liftRuns(stmt.condition, false, condLifted, ctx);
@@ -198,6 +267,80 @@ function normalizeStatement(stmt: Statement, ctx: AnfCtx): Statement[] {
   }
 }
 
+function assertTryAllowed(ctx: AnfCtx, _range: Range): void {
+  if (!ctx.allowTry) {
+    throw new Error("`try` is only allowed inside `thunk { … }` bodies");
+  }
+}
+
+function freshId(ctx: AnfCtx, range: Range, prefix: string): Identifier {
+  return {
+    kind: "Identifier",
+    name: `${prefix}${ctx.nextId++}`,
+    range,
+  };
+}
+
+function runBinding(
+  name: Identifier,
+  source: Expression,
+  range: Range,
+): VariableStatement {
+  return {
+    kind: "VariableStatement",
+    range,
+    declarationKind: "const",
+    name,
+    initializer: {
+      kind: "RunExpression",
+      range,
+      expression: source,
+    },
+  };
+}
+
+/** `if (tmp is any Error) return tmp` */
+function earlyReturnIfError(tmp: Identifier, range: Range): IfStatement {
+  const errorIdent: Identifier = {
+    kind: "Identifier",
+    name: "__ThunkError",
+    range,
+  };
+  const isAny: IsExpression = {
+    kind: "IsExpression",
+    range,
+    scrutinee: tmp,
+    pedigree: true,
+    pattern: {
+      kind: "MatchSymbolPattern",
+      range,
+      symbol: errorIdent,
+    },
+  };
+  const ret: ReturnStatement = {
+    kind: "ReturnStatement",
+    range,
+    expression: tmp,
+  };
+  return {
+    kind: "IfStatement",
+    range,
+    condition: isAny,
+    consequent: ret,
+  };
+}
+
+/** `__excludeIsAny(tmp, __ThunkError)` — success-arm type after try. */
+function excludeIsAnyCall(tmp: Identifier, range: Range): TsExpression {
+  const text = `__excludeIsAny(${tmp.name}, __ThunkError)`;
+  return {
+    kind: "TsExpression",
+    range,
+    text,
+    parts: [{ kind: "text", text, range }],
+  };
+}
+
 function asBlock(stmts: Statement[], range: Range): Statement {
   if (stmts.length === 1) return stmts[0]!;
   return { kind: "BlockStatement", range, statements: stmts };
@@ -206,6 +349,7 @@ function asBlock(stmts: Statement[], range: Range): Statement {
 function expressionContainsRun(expr: Expression): boolean {
   switch (expr.kind) {
     case "RunExpression":
+    case "TryExpression":
       return true;
     case "PipeExpression":
     case "AndExpression":
@@ -239,6 +383,8 @@ function conditionText(expr: Expression): string {
       return expr.text;
     case "RunExpression":
       return `run ${conditionText(expr.expression)}`;
+    case "TryExpression":
+      return `try ${conditionText(expr.expression)}`;
     case "PipeExpression":
       return `(${conditionText(expr.left)} | ${conditionText(expr.right)})`;
     case "AndExpression":
@@ -259,6 +405,14 @@ function liftRuns(
   ctx: AnfCtx,
 ): Expression {
   switch (expr.kind) {
+    case "TryExpression": {
+      assertTryAllowed(ctx, expr.range);
+      const inner = liftRuns(expr.expression, false, lifted, ctx);
+      const tmp = freshId(ctx, expr.range, "__try");
+      lifted.push(runBinding(tmp, inner, expr.range));
+      lifted.push(earlyReturnIfError(tmp, expr.range));
+      return excludeIsAnyCall(tmp, expr.range);
+    }
     case "RunExpression": {
       const inner = liftRuns(expr.expression, false, lifted, ctx);
       const runExpr = { ...expr, expression: inner };

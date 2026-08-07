@@ -1,0 +1,43 @@
+file tryErrors of Examples
+
+/**
+ * Fallibility as Error-subtype unions + `try` sugar.
+ *
+ * `try expr` ≈ run + early-return when the value `is any Error`.
+ * (Use a type alias for `number | E` so `|` is not parsed as pipe.)
+ */
+
+import { Error, type Thunk } from "@thunk/runtime"
+
+symbol DivideByZero extends Error {}
+type DivResult = number | DivideByZero
+
+const div = (a: number, b: number): Thunk<DivResult> => thunk {
+  return b === 0 ? DivideByZero({ message: "divide by zero" }) : a / b
+}
+
+/** Handle locally via `run` — yield stays success-only. */
+const safe = (a: number, b: number): Thunk<number> => thunk {
+  const res = run div(a, b)
+  if (res is DivideByZero) return 0
+  // State-machine lowering splits branches; assert success arm.
+  return res as number
+}
+
+/** Propagate via `try` — enclosing yield includes DivideByZero. */
+const propagate = (a: number, b: number): Thunk<DivResult> => thunk {
+  const n = try div(a, b)
+  return n + 1
+}
+
+/** Pedigree catch-all. */
+const anyError = (a: number, b: number): Thunk<DivResult> => thunk {
+  const res = run div(a, b)
+  if (res is any Error) return res
+  return res as number
+}
+
+const ok = run safe(10, 2)
+const zero = run safe(10, 0)
+const prop = run propagate(10, 2)
+console.log({ ok, zero, prop })

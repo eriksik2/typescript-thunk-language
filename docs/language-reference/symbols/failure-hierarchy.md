@@ -2,7 +2,7 @@
 
 ## What it is
 
-Built-in hierarchical symbols for tagged failures (not a full error-handling model yet).
+Built-in symbol tree for classifying failures:
 
 ```
 Failure          (abstract)
@@ -11,18 +11,16 @@ Failure          (abstract)
 └── Error
 ```
 
+Payload: `{ message: string }`.
+
 | Symbol | Role |
 |---|---|
-| `Failure` | Abstract root — `Symbol.has` / `Symbol.to` target; cannot brand |
+| `Failure` | Abstract root — `Symbol.isAny` / `Symbol.to` target; cannot brand |
 | `Defect` | Faulty / corrupted program (e.g. unexpected naked throws) |
 | `UnhandledError` | External failure not yet handled (e.g. `wrap` / Promise rejection) |
-| `Error` | Ordinary tagged application error |
+| `Error` | Ordinary tagged application error (shadows platform `Error` if imported) |
 
-Associated payload: `{ message: string }`.
-
-**No value LSP:** a `Defect` is not assignable to `Failure`. Use `Symbol.has` / `Symbol.to`.
-
-## Surface
+**No value LSP:** a `Defect` is not assignable to `Failure`. Use `Symbol.isAny` / `Symbol.to`.
 
 ```ts
 import {
@@ -34,23 +32,23 @@ import {
 } from "@thunk/runtime"
 
 const d = Defect({ message: "invariant" })
-Symbol.is(d, Defect)     // true
-Symbol.is(d, Failure)    // false
-Symbol.has(d, Failure)   // true
-Symbol.to(d, Failure)    // Failure-shaped view; of(d) still Defect
+Symbol.is(d, Defect)       // true
+Symbol.is(d, Failure)      // false
+Symbol.isAny(d, Failure)   // true
+Symbol.to(d, Failure)      // Failure-shaped view; of(d) still Defect
 ```
 
-Importing `Error` shadows the platform `Error` constructor in that scope — use `globalThis.Error` when you need it.
+Application errors are **leaves under `Error`**, used directly in yield unions
+(see [Fallibility](../types/fallibility.md)). Prefer `is any Error` for pedigree
+catch-alls; exact `is` / `match` for closed leaf sets.
 
-Typed failure channels, `try` / `catch`, and discharging errors on thunks remain deferred. Value-level [`Result`](../types/result.md) + [`match`](../core/match.md) cover closed error unions today. `wrap` rejection → `UnhandledError` is the bare-minimum async bridge.
-
-## Examples
-
-[`examples/failures.thunk`](../../../examples/failures.thunk)
+`try` / `catch` / `finally` blocks remain deferred. `wrap` rejection → `UnhandledError`
+is the bare-minimum async bridge.
 
 ## Related
 
-- [symbol declarations](./symbol-declarations.md)
-- [Symbol.is / has / to](./symbol-is.md)
+- [Fallibility](../types/fallibility.md)
+- [`try`](../core/try.md)
+- [Symbol.is / isAny](./symbol-is.md)
 - [Branding](./branding.md)
-- [Runtime packages](../modules/runtime-packages.md)
+- [`wrap`](../core/wrap.md)

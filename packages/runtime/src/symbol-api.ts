@@ -1,5 +1,5 @@
 /**
- * Author-facing symbol APIs: of / is / has / to / extends.
+ * Author-facing symbol APIs: of / is / isAny / to / extends.
  *
  * Hierarchy is a relation on identities — not value subtyping (no LSP).
  */
@@ -7,6 +7,7 @@
 import type {
   BrandCarrier,
   SymbolExtends,
+  SymbolHasValue,
   SymbolOfValue,
   SymbolToTarget,
   SymbolType,
@@ -15,7 +16,7 @@ import type {
 import { Defect } from "./failure";
 import {
   symbolExtends as extendsIdentity,
-  symbolHas as hasIdentity,
+  symbolIsAny as isAnyIdentity,
   symbolIs as isExact,
   symbolOf as ofIdentity,
   symbolTo as toInternal,
@@ -33,9 +34,15 @@ export function symbolIs<V, S extends ThunkSymbol<any>>(
   return isExact(value, sym);
 }
 
-/** Hierarchy: leaf is `sym` or extends it. */
-export function symbolHas(value: unknown, sym: ThunkSymbol<any>): boolean {
-  return hasIdentity(value, sym);
+/**
+ * Pedigree: leaf is `sym` or extends it.
+ * Narrows like TS `typeof` — else branch excludes matching arms from the union.
+ */
+export function symbolIsAny<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+): value is SymbolHasValue<V, S> {
+  return isAnyIdentity(value, sym);
 }
 
 /** Identity-level ancestry (no value). */
@@ -49,7 +56,7 @@ export function symbolExtends(
 /**
  * Checked upcast along the hierarchy.
  * - Type: `sym` must be an ancestor of the value's leaf (`SymbolToTarget`).
- * - Runtime: `has` must hold; otherwise throws `Defect`.
+ * - Runtime: `isAny` must hold; otherwise throws `Defect`.
  * - Does not re-stamp — `Symbol.of` stays the leaf.
  */
 export function symbolTo<V, S extends ThunkSymbol<any>>(
@@ -64,9 +71,9 @@ export function symbolTo<V, S extends ThunkSymbol<any>>(
 export const Symbol = {
   of: symbolOf,
   is: symbolIs,
-  has: symbolHas,
+  isAny: symbolIsAny,
   to: symbolTo,
   extends: symbolExtends,
 } as const;
 
-export type { SymbolExtends, SymbolToTarget };
+export type { SymbolExtends, SymbolHasValue, SymbolToTarget };

@@ -394,6 +394,8 @@ class Emitter {
   private needsInferLet = false;
   private needsSymbolType = false;
   private needsMatchHelpers = false;
+  private needsTryError = false;
+  private needsPedigreeHelpers = false;
   private isTempId = 0;
   private initWitnessId = 0;
   /** Same-file symbol name → resolved associated type text. */
@@ -405,6 +407,7 @@ class Emitter {
     private readonly originalText: string,
     private readonly internalImportPath: string,
     private readonly typesImportPath: string,
+    private readonly runtimeImportPath: string,
   ) {}
 
   emitFile(ast: SourceFile): LoweredFile {
@@ -417,6 +420,12 @@ class Emitter {
     this.needsInferLet = fileNeedsInferLet(ast);
     this.needsMatchHelpers = fileHasMatchHelpers(ast);
     if (this.needsMatchHelpers) this.needsSymbolType = true;
+    this.needsTryError = fileHasTry(ast);
+    this.needsPedigreeHelpers = fileHasPedigreeIs(ast) || this.needsTryError;
+    if (this.needsPedigreeHelpers) {
+      this.needsMatchHelpers = true;
+      this.needsSymbolType = true;
+    }
     this.collectSymbolDecls(ast);
 
     const imports = ast.statements.filter(
@@ -441,13 +450,26 @@ class Emitter {
     if (this.needsMatchHelpers) {
       internalNames.push(
         "symbolIs as __symbolIs",
+        "symbolIsAny as __symbolIsAny",
         "__symbolPayload",
         "__exhaustive",
       );
     }
+    if (this.needsTryError) {
+      if (!this.needsMatchHelpers) {
+        internalNames.push("symbolIsAny as __symbolIsAny");
+      }
+      internalNames.push("__excludeIsAny");
+    }
     this.write(
       `import { ${internalNames.join(", ")} } from "${this.internalImportPath}";\n`,
     );
+
+    if (this.needsTryError) {
+      this.write(
+        `import { Error as __ThunkError } from "${this.runtimeImportPath}";\n`,
+      );
+    }
 
     if (
       this.needsThunkType ||
@@ -470,7 +492,7 @@ class Emitter {
     }
     this.write("\n");
 
-    const anfRest = normalizeAnf(rest);
+    const anfRest = normalizeAnf(rest, { allowTry: false });
     for (const stmt of anfRest) {
       this.emitTopLevelStatement(stmt);
     }
@@ -763,7 +785,7 @@ class Emitter {
   }
 
   private emitThunkBody(body: Statement[]): void {
-    const normalized = normalizeAnf(body);
+    const normalized = normalizeAnf(body, { allowTry: true });
     if (!bodyContainsRun(normalized)) {
       this.emitPureBody(normalized);
       return;
@@ -798,7 +820,7 @@ class Emitter {
     }
 
     this.write("default:\n");
-    this.write('throw new Error("invalid thunk state");\n');
+    this.write('throw new globalThis.Error("invalid thunk state");\n');
     this.write("}\n");
     this.write("}\n");
     this.write("});\n");
@@ -979,7 +1001,7 @@ class Emitter {
         last.kind === "WhileStatement" ||
         last.kind === "ForStatement"
       ) {
-        this.write('throw new Error("unreachable");\n');
+        this.write('throw new globalThis.Error("unreachable");\n');
       } else {
         this.write("return succeed(undefined as void);\n");
       }
@@ -1138,6 +1160,10 @@ class Emitter {
         this.emitValueExpression(expr.right);
         this.write(")");
         return;
+      case "TryExpression":
+        throw new Error(
+          "`try` is only allowed inside `thunk { … }` bodies (ANF should have desugared it)",
+        );
       case "RunExpression":
         // After ANF, nested run should not appear in value position inside
         // thunks; top-level / fallback peels via execute.
@@ -1149,11 +1175,12 @@ class Emitter {
   }
 
   /**
-   * Boolean `x is Pat` in value position — no `infer` bindings.
+   * Boolean `x is Pat` / `x is any Pat` in value position — no `infer` bindings.
    */
   private emitIsExpressionValue(expr: {
     readonly scrutinee: Expression;
     readonly pattern: MatchPatternLike;
+    readonly pedigree: boolean;
   }): void {
     if (patternHasBindings(expr.pattern)) {
       throw new Error(
@@ -1161,10 +1188,11 @@ class Emitter {
       );
     }
     this.needsMatchHelpers = true;
+    const testFn = expr.pedigree ? "__symbolIsAny" : "__symbolIs";
     const sym = expr.pattern.symbol;
     const ident = simpleIdentName(expr.scrutinee);
     if (ident) {
-      this.write("__symbolIs(");
+      this.write(`${testFn}(`);
       this.writeMapped(ident.name, ident.range);
       this.write(", ");
       this.writeMapped(sym.name, sym.range);
@@ -1172,7 +1200,7 @@ class Emitter {
       return;
     }
     const tmp = `__is${this.isTempId++}`;
-    this.write(`((${tmp}) => __symbolIs(${tmp}, `);
+    this.write(`((${tmp}) => ${testFn}(${tmp}, `);
     this.writeMapped(sym.name, sym.range);
     this.write("))(");
     this.emitValueExpression(expr.scrutinee);
@@ -1215,6 +1243,7 @@ class Emitter {
     expr: {
       readonly scrutinee: Expression;
       readonly pattern: MatchPatternLike;
+      readonly pedigree: boolean;
     },
     bindMode: "const" | "assign",
     onTrue: () => void,
@@ -1222,12 +1251,13 @@ class Emitter {
   ): void {
     this.needsMatchHelpers = true;
     this.needsSymbolType = true;
+    const testFn = expr.pedigree ? "__symbolIsAny" : "__symbolIs";
     const sym = expr.pattern.symbol;
     let scrutineeName: string;
     const ident = simpleIdentName(expr.scrutinee);
     if (ident) {
       scrutineeName = ident.name;
-      this.write("if (__symbolIs(");
+      this.write(`if (${testFn}(`);
       this.writeMapped(ident.name, ident.range);
       this.write(", ");
       this.writeMapped(sym.name, sym.range);
@@ -1237,20 +1267,66 @@ class Emitter {
       this.write(`const ${scrutineeName} = `);
       this.emitValueExpression(expr.scrutinee);
       this.write(";\n");
-      this.write(`if (__symbolIs(${scrutineeName}, `);
+      this.write(`if (${testFn}(${scrutineeName}, `);
       this.writeMapped(sym.name, sym.range);
       this.write(")) {\n");
     }
-    this.write(
-      `type __leaf = Extract<typeof ${scrutineeName}, { readonly __symbolIdentity?: typeof `,
-    );
-    this.writeMapped(sym.name, sym.range);
-    this.write(" }>;\n");
-    this.emitPatternBindings(expr.pattern, scrutineeName, bindMode);
+    if (expr.pedigree) {
+      // Type predicate on __symbolIsAny narrows the scrutinee (TS typeof-style).
+      // Payload bindings use the narrowed value's associated type.
+      this.emitPatternBindingsPedigree(expr.pattern, scrutineeName, bindMode);
+    } else {
+      this.write(
+        `type __leaf = Extract<typeof ${scrutineeName}, { readonly __symbolIdentity?: typeof `,
+      );
+      this.writeMapped(sym.name, sym.range);
+      this.write(" }>;\n");
+      this.emitPatternBindings(expr.pattern, scrutineeName, bindMode);
+    }
     onTrue();
     this.write("} else {\n");
     onFalse();
     this.write("}\n");
+  }
+
+  private emitPatternBindingsPedigree(
+    pattern: MatchPatternLike,
+    scrutineeName: string,
+    bindMode: "const" | "assign",
+  ): void {
+    if (pattern.kind === "MatchSymbolPattern") {
+      if (!pattern.binding) return;
+      if (bindMode === "const") {
+        this.write("const ");
+        this.writeMapped(pattern.binding.name, pattern.binding.range);
+        this.write(
+          ` = __symbolPayload(${scrutineeName}) as SymbolType<typeof ${scrutineeName}>;\n`,
+        );
+      } else {
+        this.writeMapped(pattern.binding.name, pattern.binding.range);
+        this.write(
+          ` = __symbolPayload(${scrutineeName}) as SymbolType<typeof ${scrutineeName}>;\n`,
+        );
+      }
+      return;
+    }
+    this.write(
+      `const __payload = ${scrutineeName} as SymbolType<typeof ${scrutineeName}>;\n`,
+    );
+    for (const field of pattern.fields) {
+      if (bindMode === "const") {
+        this.write("const ");
+        this.writeMapped(field.binding.name, field.binding.range);
+        this.write(" = __payload.");
+        this.writeMapped(field.field.name, field.field.range);
+        this.write(";\n");
+      } else {
+        this.writeMapped(field.binding.name, field.binding.range);
+        this.write(" = __payload.");
+        this.writeMapped(field.field.name, field.field.range);
+        this.write(";\n");
+      }
+    }
   }
 
   private emitPatternBindings(
@@ -1591,6 +1667,7 @@ function exprHasMatchHelpers(expr: Expression): boolean {
     case "AndExpression":
       return exprHasMatchHelpers(expr.left) || exprHasMatchHelpers(expr.right);
     case "RunExpression":
+    case "TryExpression":
       return exprHasMatchHelpers(expr.expression);
     case "ThunkExpression":
       return walkHasMatchHelpers(expr.body);
@@ -1657,6 +1734,7 @@ function expressionHasIsBindings(expr: Expression): boolean {
         expressionHasIsBindings(expr.right)
       );
     case "RunExpression":
+    case "TryExpression":
       return expressionHasIsBindings(expr.expression);
     case "MatchExpression":
     case "ThunkExpression":
@@ -1706,6 +1784,7 @@ function collectIsBindingsFromStmts(
         walkExpr(expr.right);
         break;
       case "RunExpression":
+      case "TryExpression":
         walkExpr(expr.expression);
         break;
       case "MatchExpression":
@@ -1786,6 +1865,7 @@ function fileNeedsInferLet(ast: SourceFile): boolean {
         }
         return expr.body.some((s) => visitStmt(s));
       case "RunExpression":
+      case "TryExpression":
         return visitExpr(expr.expression);
       case "PipeExpression":
       case "AndExpression":
@@ -1847,6 +1927,7 @@ function walkHasRun(stmts: Statement[]): boolean {
 function exprHasRun(expr: Expression): boolean {
   switch (expr.kind) {
     case "RunExpression":
+    case "TryExpression":
       return true;
     case "PipeExpression":
     case "AndExpression":
@@ -1884,6 +1965,8 @@ function expressionText(expr: Expression): string {
       return `${expressionText(expr.scrutinee)} is …`;
     case "RunExpression":
       return `run ${expressionText(expr.expression)}`;
+    case "TryExpression":
+      return `try ${expressionText(expr.expression)}`;
     case "MatchExpression":
       return `match (…) { … }`;
     case "ThunkExpression":
@@ -1960,10 +2043,13 @@ export function lowerSourceFile(
   const internalImportPath =
     options?.internalImportPath ?? "@thunk/runtime/internal";
   const typesImportPath = options?.typesImportPath ?? "@thunk/types";
+  const runtimeImportPath =
+    options?.runtimeImportPath ?? "@thunk/runtime";
   return new Emitter(
     ast.text,
     internalImportPath,
     typesImportPath,
+    runtimeImportPath,
   ).emitFile(ast);
 }
 
@@ -1973,4 +2059,137 @@ export function lowerThunkSource(
   options?: LowerOptions,
 ): LoweredFile {
   return lowerSourceFile(parseThunkSource(text, fileName), options);
+}
+
+function fileHasTry(ast: SourceFile): boolean {
+  return walkHasTry(ast.statements);
+}
+
+function fileHasPedigreeIs(ast: SourceFile): boolean {
+  return walkHasPedigreeIs(ast.statements);
+}
+
+function walkHasTry(stmts: readonly Statement[]): boolean {
+  for (const stmt of stmts) {
+    if (stmtHasTry(stmt)) return true;
+  }
+  return false;
+}
+
+function stmtHasTry(stmt: Statement): boolean {
+  switch (stmt.kind) {
+    case "BlockStatement":
+      return walkHasTry(stmt.statements);
+    case "IfStatement":
+      return (
+        exprHasTry(stmt.condition) ||
+        stmtHasTry(stmt.consequent) ||
+        (stmt.alternate ? stmtHasTry(stmt.alternate) : false)
+      );
+    case "WhileStatement":
+      return exprHasTry(stmt.condition) || stmtHasTry(stmt.body);
+    case "ForStatement":
+      return (
+        (stmt.initializer ? stmtHasTry(stmt.initializer) : false) ||
+        (stmt.condition ? exprHasTry(stmt.condition) : false) ||
+        (stmt.update ? exprHasTry(stmt.update) : false) ||
+        stmtHasTry(stmt.body)
+      );
+    case "VariableStatement":
+      return exprHasTry(stmt.initializer);
+    case "ExpressionStatement":
+    case "ReturnStatement":
+      return stmt.expression ? exprHasTry(stmt.expression) : false;
+    default:
+      return false;
+  }
+}
+
+function exprHasTry(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "TryExpression":
+      return true;
+    case "RunExpression":
+      return exprHasTry(expr.expression);
+    case "PipeExpression":
+    case "AndExpression":
+      return exprHasTry(expr.left) || exprHasTry(expr.right);
+    case "IsExpression":
+      return exprHasTry(expr.scrutinee);
+    case "MatchExpression":
+      return (
+        exprHasTry(expr.scrutinee) ||
+        expr.arms.some((a) => exprHasTry(a.expression))
+      );
+    case "ThunkExpression":
+      return walkHasTry(expr.body);
+    case "TsExpression":
+      return expr.parts.some(
+        (p) => p.kind === "embedded" && exprHasTry(p.expression),
+      );
+    case "Identifier":
+      return false;
+  }
+}
+
+function walkHasPedigreeIs(stmts: readonly Statement[]): boolean {
+  for (const stmt of stmts) {
+    if (stmtHasPedigreeIs(stmt)) return true;
+  }
+  return false;
+}
+
+function stmtHasPedigreeIs(stmt: Statement): boolean {
+  switch (stmt.kind) {
+    case "BlockStatement":
+      return walkHasPedigreeIs(stmt.statements);
+    case "IfStatement":
+      return (
+        exprHasPedigreeIs(stmt.condition) ||
+        stmtHasPedigreeIs(stmt.consequent) ||
+        (stmt.alternate ? stmtHasPedigreeIs(stmt.alternate) : false)
+      );
+    case "WhileStatement":
+      return exprHasPedigreeIs(stmt.condition) || stmtHasPedigreeIs(stmt.body);
+    case "ForStatement":
+      return (
+        (stmt.initializer ? stmtHasPedigreeIs(stmt.initializer) : false) ||
+        (stmt.condition ? exprHasPedigreeIs(stmt.condition) : false) ||
+        (stmt.update ? exprHasPedigreeIs(stmt.update) : false) ||
+        stmtHasPedigreeIs(stmt.body)
+      );
+    case "VariableStatement":
+      return exprHasPedigreeIs(stmt.initializer);
+    case "ExpressionStatement":
+    case "ReturnStatement":
+      return stmt.expression ? exprHasPedigreeIs(stmt.expression) : false;
+    default:
+      return false;
+  }
+}
+
+function exprHasPedigreeIs(expr: Expression): boolean {
+  switch (expr.kind) {
+    case "IsExpression":
+      return expr.pedigree || exprHasPedigreeIs(expr.scrutinee);
+    case "RunExpression":
+    case "TryExpression":
+      return exprHasPedigreeIs(expr.expression);
+    case "PipeExpression":
+    case "AndExpression":
+      return exprHasPedigreeIs(expr.left) || exprHasPedigreeIs(expr.right);
+    case "MatchExpression":
+      return (
+        exprHasPedigreeIs(expr.scrutinee) ||
+        expr.arms.some((a) => exprHasPedigreeIs(a.expression))
+      );
+    case "ThunkExpression":
+      return walkHasPedigreeIs(expr.body);
+    case "TsExpression":
+      return expr.parts.some(
+        (p) => p.kind === "embedded" && exprHasPedigreeIs(p.expression),
+      );
+    case "Identifier":
+      return false;
+  }
 }

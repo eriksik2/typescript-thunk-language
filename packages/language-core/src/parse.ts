@@ -972,8 +972,8 @@ class Parser {
    *
    *   expr     = andExpr
    *   andExpr  = isExpr ('&&' isExpr)*
-   *   isExpr   = runExpr ('is' pattern)?
-   *   runExpr  = 'run' runExpr | pipeExpr
+   *   isExpr   = runExpr ('is' 'any'? pattern)?
+   *   runExpr  = 'run' runExpr | 'try' runExpr | pipeExpr
    *   pipeExpr = primary ('|' primary)*
    *   primary  = thunk | match | '(' … ')' | tsAtom
    */
@@ -1017,12 +1017,19 @@ class Parser {
     if (!this.atKeywordHere("is")) return left;
     this.pos += "is".length;
     this.skipTrivia();
+    let pedigree = false;
+    if (this.atKeywordHere("any")) {
+      this.pos += "any".length;
+      this.skipTrivia();
+      pedigree = true;
+    }
     const pattern = this.parseMatchPattern();
     const isExpr: IsExpression = {
       kind: "IsExpression",
       range: this.range(start, this.pos),
       scrutinee: left,
       pattern,
+      pedigree,
     };
     return isExpr;
   }
@@ -1035,6 +1042,15 @@ class Parser {
       const inner = this.parseRunExpression();
       return {
         kind: "RunExpression",
+        range: this.range(start, this.pos),
+        expression: inner,
+      };
+    }
+    if (this.matchKeyword("try")) {
+      this.skipTrivia();
+      const inner = this.parseRunExpression();
+      return {
+        kind: "TryExpression",
         range: this.range(start, this.pos),
         expression: inner,
       };
@@ -1420,8 +1436,11 @@ class Parser {
       this.pos = save;
     }
 
-    // Nested `run` for ANF — not after `.` (property `x.run`)
-    if (this.peekKeyword("run") && !this.precededByDot()) {
+    // Nested `run` / `try` for ANF — not after `.` (property `x.run`)
+    if (
+      (this.peekKeyword("run") || this.peekKeyword("try")) &&
+      !this.precededByDot()
+    ) {
       onBeforeEmbed();
       parts.push({
         kind: "embedded",

@@ -9,6 +9,7 @@
 | [CLI](./tooling/cli.md) | tooling |
 | [Editor](./tooling/editor.md) | tooling |
 | [Failure hierarchy](./symbols/failure-hierarchy.md) | symbols |
+| [Fallibility](./types/fallibility.md) | types |
 | [File prelude](./modules/file-prelude.md) | modules |
 | [Imports](./modules/imports.md) | modules |
 | [Layer](./environment/layer.md) | environment |
@@ -18,13 +19,13 @@
 | [Provide](./environment/provide.md) | environment |
 | [Protocols overview](./types/protocols-overview.md) | types |
 | [Requires](./types/requires.md) | types |
-| [Result](./types/result.md) | types |
 | [run](./core/run.md) | core |
 | [Runtime packages](./modules/runtime-packages.md) | modules |
 | [symbol declarations](./symbols/symbol-declarations.md) | symbols |
-| [Symbol.is / has / to](./symbols/symbol-is.md) | symbols |
+| [Symbol.is / isAny](./symbols/symbol-is.md) | symbols |
 | [Symbol.of](./symbols/symbol-of.md) | symbols |
 | [Thunk blocks](./core/thunk-blocks.md) | core |
 | [Thunk type](./types/thunk-type.md) | types |
+| [try](./core/try.md) | core |
 | [use](./environment/use.md) | environment |
 | [wrap](./core/wrap.md) | core |

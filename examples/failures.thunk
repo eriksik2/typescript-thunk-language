@@ -19,11 +19,11 @@ const unhandled = UnhandledError({ message: "promise rejected" })
 const err = Error({ message: "not found" })
 
 const checks = thunk {
-  const a = Symbol.has(defect, Failure)
+  const a = Symbol.isAny(defect, Failure)
   const b = Symbol.is(defect, Defect)
   const c = Symbol.is(defect, Failure)
-  const d = Symbol.has(unhandled, Failure)
-  const e = Symbol.has(err, Error)
+  const d = Symbol.isAny(unhandled, Failure)
+  const e = Symbol.isAny(err, Error)
   const asFailure = Symbol.to(defect, Failure)
   const leaf = Symbol.of(defect)
   return {

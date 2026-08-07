@@ -850,7 +850,7 @@ const db = run use(Database)
 | `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
 | `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
-| `abstract symbol` | Not callable; still a type / `Symbol.has` / `Symbol.to` target |
+| `abstract symbol` | Not callable; still a type / `Symbol.isAny` / `Symbol.to` target |
 | `symbol Child extends Parent` | Pedigree for `has` / `to`; **no** value assignability to Parent; env keys stay exact |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
@@ -1147,7 +1147,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 
 | Feature | Notes |
 |---|---|
-| Typed error channels / error handling semantics | Fail **protocol** still later; **Result values + match v1** shipped; Failure tree + `wrap` → `UnhandledError` |
+| Typed error channels / error handling semantics | **Error-union fallibility + `try` / `is any` shipped**; Fail **protocol** / pretty `Thunk<T> Fail(E)` still later; Failure tree + `wrap` → `UnhandledError` |
 | Cancellation | Later |
 | Asynchronous execution | **Partial** — `Async` + `wrap` + async `execute` |
 | Concurrency / parallel composition | Later |
@@ -1157,7 +1157,8 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Effect tracking beyond `Requires` | Partial — `Async` flag shipped; more later |
 | Advanced protocol interoperability | Later |
 | `run` in arbitrary expressions / full CFG | **Done** (ANF); `for`-condition nested `run` still once-before-loop |
-| `try` / `catch` / `finally` in thunks | Separate design (handler/finalizer state) |
+| `try` sugar (Error early-return) | **Done** — not JS `try`/`catch`/`finally` |
+| `try` / `catch` / `finally` blocks in thunks | Separate design (handler/finalizer state) |
 | Iterative executor (stack) | Largely addressed by machine lowering; further polish optional |
 | Disk `.map` sourcemaps for emit | Optional tooling |
 | `.th.ts` alternate extension | Open; not required |
@@ -1183,8 +1184,8 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Pipe `\|` | Done | **M2** |
 | Pipe + `run` precedence | Done | **M2** |
 | `match` (exact leaf + exhaustiveness) | Done (v1) | **M2** |
-| `is` pattern test (`if (x is Err: infer e)`) | Done | **M2** |
-| `Result` / `Ok` / `Err` | Done (values) | **M2** |
+| `is` / `is any` pattern test | Done | **M2** |
+| Error-union fallibility + `try` sugar | Done | **M2** |
 | Generic `symbol Name<A>` | Done | **M2** |
 | Postfix protocol syntax | Done | M3 |
 | Protocol normalization / inference | Done (`Requires`) | M3 |
@@ -1194,6 +1195,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
-| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure; **Result+match**) | later |
+| Fail protocol / `Thunk<T> Fail(E)` pretty | Deferred | later |
+| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure; Error unions + try) | later |
 
-**Next implementation focus:** deepen `protocol` decls; typed Fail protocol on thunks (optional next after Result values); match v2 (literals / guards).
+**Next implementation focus:** deepen `protocol` decls; optional Fail pretty spelling; match v2 (literals / guards).

@@ -22,4 +22,4 @@ const cat = Cat({ name: "Misty" })
 const asAnimal = Symbol.to(cat, Animal)
 const leafIsCat = Symbol.of(cat) === Cat
 const exactAnimal = Symbol.is(cat, Animal)
-const pedigree = Symbol.has(cat, Animal)
+const pedigree = Symbol.isAny(cat, Animal)
