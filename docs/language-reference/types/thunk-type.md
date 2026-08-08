@@ -26,7 +26,11 @@ const fetchUser: Thunk<string> Requires(Database) = thunk {
   const db = run use(Database)
   return db.name
 }
+
+const div: Thunk<number> Fail(DivideByZero) = thunk { … }
 ```
+
+`Fail(E)` sits **before** protocols and encodes as yield `T | E` (see [Fallibility](./fallibility.md)).
 
 Empty bags pretty-print as `Thunk<T>` (not `Thunk<T, EmptyProtocols>`).  
 Nested thunks pretty-print compactly: `Thunk<Thunk<boolean> Async>`.
@@ -51,5 +55,6 @@ After `provide` discharges requirements, the result may be annotated `Thunk<T>`.
 - [Protocols overview](./protocols-overview.md)
 - [Requires](./requires.md)
 - [Async](./async.md)
+- [Fallibility](./fallibility.md)
 - [Thunk blocks](../core/thunk-blocks.md)
 - [Runtime packages](../modules/runtime-packages.md)

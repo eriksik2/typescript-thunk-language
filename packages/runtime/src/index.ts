@@ -17,6 +17,7 @@ export {
   symbolOf,
   symbolIs,
   symbolIsAny,
+  symbolUnwrap,
   symbolTo,
   symbolExtends,
   Symbol,

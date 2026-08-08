@@ -1,20 +1,28 @@
-# Fallibility (Error unions)
+# Fallibility (`Fail`)
 
 ## What it is
 
-There is **no** `Result` / `Ok` / `Err` wrapper. Fallibility is a plain union whose
-error arms extend [`Error`](../symbols/failure-hierarchy.md):
+Fallibility is part of the **thunk type**, written before protocols:
+
+```ts
+Thunk<number> Fail(DivideByZero)
+Thunk<User> Fail(NotFound | Conflict) Requires(Database)
+```
+
+`Fail(E)` means success yield `T` with error arms `E` (typically leaves under
+[`Error`](../symbols/failure-hierarchy.md)). It encodes as yield `T | E` — not a
+protocol bag entry.
 
 ```ts
 symbol DivideByZero extends Error {}
-type DivResult = number | DivideByZero
 
-const div = (a: number, b: number): Thunk<DivResult> => thunk {
+const div = (a: number, b: number): Thunk<number> Fail(DivideByZero) => thunk {
   return b === 0 ? DivideByZero({ message: "divide by zero" }) : a / b
 }
 ```
 
-Success stays in the yield type. Failure leaves are ordinary symbols under `Error`.
+You can also write the union yourself (`Thunk<number | DivideByZero>`); `|` inside
+type arguments is a **union**, not pipe.
 
 ## `run` vs `try`
 
@@ -30,14 +38,14 @@ const safe = (a: number, b: number): Thunk<number> => thunk {
   return res as number
 }
 
-const propagate = (a: number, b: number): Thunk<DivResult> => thunk {
+const propagate = (a: number, b: number): Thunk<number> Fail(DivideByZero) => thunk {
   const n = try div(a, b)
   return n + 1
 }
 ```
 
-`try` is sugar for run + `if (… is any Error) return …` (plus a narrowing helper for
-state-machine emit). It is **not** JS `try` / `catch` / `finally`.
+`try` is sugar for run + `if (… is any Error) return …`. It is **not** JS
+`try` / `catch` / `finally`.
 
 ## Discrimination
 
@@ -50,5 +58,3 @@ state-machine emit). It is **not** JS `try` / `catch` / `finally`.
 - [`is`](../core/is.md) / [`match`](../core/match.md)
 - [Failure hierarchy](../symbols/failure-hierarchy.md)
 - [`examples/try-errors.thunk`](../../../examples/try-errors.thunk)
-
-**Not in this wave:** `Thunk<T> Fail(E)` pretty spelling / Fail protocol.

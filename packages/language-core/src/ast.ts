@@ -87,7 +87,7 @@ export interface TagsDeclaration {
 
 /**
  * Opaque TypeScript `type Name = …` / `type Name<…> = …` passthrough.
- * Needed so `|` in type aliases is not parsed as pipe.
+ * Type aliases keep `|` as union (not pipe) in their RHS.
  */
 export interface TypeAliasDeclaration {
   readonly kind: "TypeAliasDeclaration";
@@ -208,8 +208,13 @@ export interface ProtocolClause {
 }
 
 export interface TypeAnnotation {
-  /** Base type text before postfix protocols (e.g. `Thunk<User>`). */
+  /** Base type text before Fail / postfix protocols (e.g. `Thunk<User>`). */
   readonly baseText: string;
+  /**
+   * Optional `Fail(E)` payload — part of the thunk yield (success | E),
+   * parsed before protocol postfix (`Requires` / `Async` / …).
+   */
+  readonly failPayload?: string;
   readonly protocols: readonly ProtocolClause[];
   readonly range: Range;
 }

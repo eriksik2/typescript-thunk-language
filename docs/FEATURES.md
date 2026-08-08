@@ -841,17 +841,19 @@ symbol Defect extends Failure
 
 const a: Age = Age(30)
 const db = run use(Database)
+// const n: number = a              // error — opaque
+const n: number = Symbol.unwrap(a)  // ok
 ```
 
 **Cases**
 
 | Example | Expected |
 |---|---|
-| `Age(30)` | Brands; `number` assignable from `Age`; reverse rejected |
+| `Age(30)` | Brands; **opaque** — not assignable to `number`; `Symbol.unwrap` recovers payload |
 | `typeof Database` | Symbol identity; `SymbolType<typeof Database>` is associated type |
 | `use` / `layerOf` / `provide` / `Symbol.of` | Env keyed by identity; branded objects retain identity |
 | `abstract symbol` | Not callable; still a type / `Symbol.isAny` / `Symbol.to` target |
-| `symbol Child extends Parent` | Pedigree for `has` / `to`; **no** value assignability to Parent; env keys stay exact |
+| `symbol Child extends Parent` | Pedigree for `isAny` / `to`; **no** value assignability to Parent; env keys stay exact |
 | `createTag` | Deprecated / not part of the surface (lowerer uses `__makeSymbol`) |
 
 Built-in Failure tree: see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).
@@ -1147,7 +1149,8 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 
 | Feature | Notes |
 |---|---|
-| Typed error channels / error handling semantics | **Error-union fallibility + `try` / `is any` shipped**; Fail **protocol** / pretty `Thunk<T> Fail(E)` still later; Failure tree + `wrap` → `UnhandledError` |
+| Fail protocol as bag peer | Deferred — `Fail(E)` is yield-union spelling on `Thunk`, not a protocol bag entry |
+| Typed error channels / error handling semantics | **`Thunk<T> Fail(E)` + Error-union fallibility + `try` / `is any` shipped**; Failure tree + `wrap` → `UnhandledError` |
 | Cancellation | Later |
 | Asynchronous execution | **Partial** — `Async` + `wrap` + async `execute` |
 | Concurrency / parallel composition | Later |
@@ -1186,6 +1189,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | `match` (exact leaf + exhaustiveness) | Done (v1) | **M2** |
 | `is` / `is any` pattern test | Done | **M2** |
 | Error-union fallibility + `try` sugar | Done | **M2** |
+| `Thunk<T> Fail(E)` (yield union spelling) | Done | **M2** |
 | Generic `symbol Name<A>` | Done | **M2** |
 | Postfix protocol syntax | Done | M3 |
 | Protocol normalization / inference | Done (`Requires`) | M3 |
@@ -1195,7 +1199,7 @@ These must **not** drive the initial core. Status for all: **Deferred**.
 | Type utilities | Done | Typed core |
 | Volar editor + CLI | Done | M1 |
 | Hover pretty protocols | Done (empty `Omit<>` fixed) | Typed core |
-| Fail protocol / `Thunk<T> Fail(E)` pretty | Deferred | later |
-| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure; Error unions + try) | later |
+| Fail protocol / bag peer | Deferred | later |
+| Errors / async / concurrency / resources / … | Partial (`Async`+`wrap`; Failure; Fail(E) + try) | later |
 
-**Next implementation focus:** deepen `protocol` decls; optional Fail pretty spelling; match v2 (literals / guards).
+**Next implementation focus:** deepen `protocol` decls; match v2 (literals / guards).

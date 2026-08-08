@@ -1451,7 +1451,8 @@ Example (branding):
 ```ts
 symbol Age = number
 const a: Age = Age(30)
-const n: number = a   // ok
+// const n: number = a            // error — brands are opaque
+const n: number = Symbol.unwrap(a)  // ok
 // const bad: Age = 30 // error
 ```
 

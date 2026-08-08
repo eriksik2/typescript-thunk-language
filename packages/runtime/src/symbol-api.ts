@@ -1,7 +1,8 @@
 /**
- * Author-facing symbol APIs: of / is / isAny / to / extends.
+ * Author-facing symbol APIs: of / is / isAny / unwrap / to / extends.
  *
  * Hierarchy is a relation on identities — not value subtyping (no LSP).
+ * Brands are opaque — unwrap to recover the associated payload.
  */
 
 import type {
@@ -15,6 +16,7 @@ import type {
 } from "@thunk/types";
 import { Defect } from "./failure";
 import {
+  __symbolPayload,
   symbolExtends as extendsIdentity,
   symbolIsAny as isAnyIdentity,
   symbolIs as isExact,
@@ -45,6 +47,11 @@ export function symbolIsAny<V, S extends ThunkSymbol<any>>(
   return isAnyIdentity(value, sym);
 }
 
+/** Recover the associated payload from an opaque branded value. */
+export function symbolUnwrap<V>(value: V): SymbolType<V> {
+  return __symbolPayload(value);
+}
+
 /** Identity-level ancestry (no value). */
 export function symbolExtends(
   child: ThunkSymbol<any>,
@@ -54,24 +61,26 @@ export function symbolExtends(
 }
 
 /**
- * Checked upcast along the hierarchy.
+ * Checked upcast along the hierarchy (opaque parent brand).
  * - Type: `sym` must be an ancestor of the value's leaf (`SymbolToTarget`).
  * - Runtime: `isAny` must hold; otherwise throws `Defect`.
  * - Does not re-stamp — `Symbol.of` stays the leaf.
+ * - Use `Symbol.unwrap` for the associated payload fields.
  */
 export function symbolTo<V, S extends ThunkSymbol<any>>(
   value: V,
   sym: SymbolToTarget<V, S>,
-): SymbolType<S> & BrandCarrier<SymbolType<S>> {
+): { readonly __assoc: SymbolType<S> } & BrandCarrier<SymbolType<S>> {
   return toInternal(value, sym as S, (message) => {
     throw Defect({ message });
-  });
+  }) as { readonly __assoc: SymbolType<S> } & BrandCarrier<SymbolType<S>>;
 }
 
 export const Symbol = {
   of: symbolOf,
   is: symbolIs,
   isAny: symbolIsAny,
+  unwrap: symbolUnwrap,
   to: symbolTo,
   extends: symbolExtends,
 } as const;

@@ -56,6 +56,24 @@ describe("formatThunkType", () => {
     );
   });
 
+  test("encoded Fail peel → Thunk<T> Fail(E)", () => {
+    expect(formatThunkType("number | (DivideByZero)", "EmptyProtocols")).toBe(
+      "Thunk<number> Fail(DivideByZero)",
+    );
+    expect(
+      formatThunkType(
+        "User | (NotFound | Conflict)",
+        "{ readonly [Requires]: typeof Database }",
+      ),
+    ).toBe("Thunk<User> Fail(NotFound | Conflict)\n  Requires(Database)");
+  });
+
+  test("bare yield union is not Fail", () => {
+    expect(formatThunkType("number | string", "EmptyProtocols")).toBe(
+      "Thunk<number | string>",
+    );
+  });
+
   test("Async flag with trailing semicolon (TS printer)", () => {
     expect(formatThunkType("boolean", "{ readonly [Async]: void; }")).toBe(
       "Thunk<boolean>\n  Async",

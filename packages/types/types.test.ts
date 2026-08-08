@@ -166,22 +166,23 @@ describe("@thunk/types", () => {
     expect(_i && _b).toBe(true);
   });
 
-  test("branded Age assigns to number, not reverse", () => {
+  test("branded Age does not assign to number; unwrap recovers payload", () => {
     declare const __brand_Age: unique symbol;
     type Age = Branded<number, typeof __brand_Age>;
 
-    type AgeToNumber = ExpectExtends<Age, number>;
+    // Age is opaque — not assignable to number
+    type AgeToNumber = Age extends number ? true : false;
+    type NotAssign = ExpectEqual<AgeToNumber, false>;
     // number is not assignable to Age
     type NumberToAge = number extends Age ? true : false;
     type NotReverse = ExpectEqual<NumberToAge, false>;
 
-    const age = 30 as Age;
-    const n: number = age;
-    expect(n).toBe(30);
+    type Payload = ExpectEqual<SymbolType<Age>, number>;
 
-    const _a: AgeToNumber = true;
+    const _a: NotAssign = true;
     const _r: NotReverse = true;
-    expect(_a && _r).toBe(true);
+    const _p: Payload = true;
+    expect(_a && _r && _p).toBe(true);
   });
 
   test("Requires bag keys are symbol identities", () => {

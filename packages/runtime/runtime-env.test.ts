@@ -156,7 +156,7 @@ describe("hierarchical / abstract symbols", () => {
     });
     const defect = DefectSym({ message: "boom" });
     const asFailure = Symbol.to(defect, Failure);
-    expect(asFailure.message).toBe("boom");
+    expect(Symbol.unwrap(asFailure).message).toBe("boom");
     expect(Symbol.of(asFailure)).toBe(DefectSym);
     expect(() =>
       Symbol.to(defect, Sibling as never),
@@ -181,7 +181,8 @@ describe("hierarchical / abstract symbols", () => {
     expect(Sym.isAny(e, Failure)).toBe(true);
     expect(Sym.isAny(d, UnhandledError)).toBe(false);
     expect(Sym.of(d)).toBe(Defect);
-    expect(Sym.to(d, Failure).message).toBe("invariant");
+    expect(Sym.to(d, Failure)).toBeTruthy();
+    expect(Sym.unwrap(Sym.to(d, Failure)).message).toBe("invariant");
     expect(() =>
       (Failure as unknown as (v: { message: string }) => unknown)({
         message: "nope",

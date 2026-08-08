@@ -48,7 +48,7 @@ describe("wrap / Async", () => {
       throw new Error("expected reject");
     } catch (err) {
       expect(Symbol.is(err, UnhandledError)).toBe(true);
-      expect((err as { message: string }).message).toBe("boom");
+      expect(Symbol.unwrap(err as UnhandledError).message).toBe("boom");
     }
   });
 

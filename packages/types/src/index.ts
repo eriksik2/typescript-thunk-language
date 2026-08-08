@@ -157,8 +157,11 @@ export type SymbolHasValue<V, S> = V extends any
 /**
  * Nominal brand over associated type `T`, keyed by a unique brand key.
  * Emitted by the lowerer for each `symbol` declaration.
+ *
+ * Opaque: **not** assignable to `T` (use `Symbol.unwrap`). Still carries
+ * `__assoc` so `SymbolType` / unwrap recover the payload type.
  */
-export type Branded<T, Brand extends PropertyKey, S = unknown> = T & {
+export type Branded<T, Brand extends PropertyKey, S = unknown> = {
   readonly [K in Brand]: Brand;
 } & BrandCarrier<T> &
   IdentityCarrier<S>;

@@ -1,8 +1,8 @@
 file symbols of Examples
 
-// Example: symbol branding (nominal over associated type)
+// Example: symbol branding (opaque over associated type)
 
 symbol Age = number
 
 const a: Age = Age(30)
-const n: number = a
+const n: number = Symbol.unwrap(a)

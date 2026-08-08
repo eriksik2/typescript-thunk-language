@@ -33,7 +33,7 @@ const checks = thunk {
     d,
     e,
     leafIsDefect: leaf === Defect,
-    asFailureMessage: asFailure.message,
+    asFailureMessage: Symbol.unwrap(asFailure).message,
   }
 }
 

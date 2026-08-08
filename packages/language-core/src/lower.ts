@@ -20,7 +20,7 @@ import type {
 } from "./ast";
 import { normalizeAnf } from "./anf";
 import { parseThunkSource } from "./parse";
-import { encodeThunkTypeAnnotation } from "./protocol-encode";
+import { encodeThunkTypeAnnotation, rewriteThunkSurfaceInText } from "./protocol-encode";
 import type { Mapping, Range, SourceMap } from "./source-map";
 
 export interface LoweredFile {
@@ -642,8 +642,7 @@ class Emitter {
       this.write("type ");
       this.writeMapped(name, decl.name.range);
       this.write(`${typeParamList} = `);
-      this.writeMapped(assoc, assocRange);
-      this.write(" & ");
+      // Opaque brand — not `assoc & brand` (that would assign to assoc).
       this.write(
         `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
       );
@@ -699,13 +698,11 @@ class Emitter {
     }
     this.write(";\n");
 
-    // Branded type — own brand only (no parent intersection / no value LSP).
+    // Branded type — opaque (not assignable to assoc). Use Symbol.unwrap.
     // Associated type still merges parent fields for the payload shape.
     this.write("type ");
     this.writeMapped(name, decl.name.range);
     this.write(" = ");
-    this.writeMapped(assoc, assocRange);
-    this.write(" & ");
     this.write(
       `{ readonly [${brand}]: typeof ${brand} } & { readonly __assoc: `,
     );
@@ -737,6 +734,7 @@ class Emitter {
     const { typeText } = encodeThunkTypeAnnotation(
       ann.baseText,
       ann.protocols,
+      ann.failPayload,
     );
     this.writeMapped(typeText, ann.range);
   }
@@ -1130,7 +1128,13 @@ class Emitter {
       case "TsExpression":
         for (const part of expr.parts) {
           if (part.kind === "text") {
-            this.writeMapped(part.text, part.range);
+            const rewritten = rewriteThunkSurfaceInText(part.text);
+            if (rewritten !== part.text) {
+              if (/\[Requires\]/.test(rewritten)) this.needsRequiresType = true;
+              if (/\[Async\]/.test(rewritten)) this.needsAsyncType = true;
+              this.needsThunkType = true;
+            }
+            this.writeMapped(rewritten, part.range);
           } else {
             this.emitValueExpression(part.expression);
           }
@@ -1300,18 +1304,18 @@ class Emitter {
         this.write("const ");
         this.writeMapped(pattern.binding.name, pattern.binding.range);
         this.write(
-          ` = __symbolPayload(${scrutineeName}) as SymbolType<typeof ${scrutineeName}>;\n`,
+          ` = __symbolPayload(${scrutineeName});\n`,
         );
       } else {
         this.writeMapped(pattern.binding.name, pattern.binding.range);
         this.write(
-          ` = __symbolPayload(${scrutineeName}) as SymbolType<typeof ${scrutineeName}>;\n`,
+          ` = __symbolPayload(${scrutineeName});\n`,
         );
       }
       return;
     }
     this.write(
-      `const __payload = ${scrutineeName} as SymbolType<typeof ${scrutineeName}>;\n`,
+      `const __payload = __symbolPayload(${scrutineeName});\n`,
     );
     for (const field of pattern.fields) {
       if (bindMode === "const") {
@@ -1340,25 +1344,19 @@ class Emitter {
         this.write("const ");
         this.writeMapped(pattern.binding.name, pattern.binding.range);
         this.write(
-          ` = __symbolPayload(${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+          ` = __symbolPayload(${scrutineeName} as __leaf);\n`,
         );
       } else {
         this.writeMapped(pattern.binding.name, pattern.binding.range);
         this.write(
-          ` = __symbolPayload(${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
+          ` = __symbolPayload(${scrutineeName} as __leaf);\n`,
         );
       }
       return;
     }
-    if (bindMode === "const") {
-      this.write(
-        `const __payload = (${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
-      );
-    } else {
-      this.write(
-        `const __payload = (${scrutineeName} as __leaf) as SymbolType<__leaf>;\n`,
-      );
-    }
+    this.write(
+      `const __payload = __symbolPayload(${scrutineeName} as __leaf);\n`,
+    );
     for (const field of pattern.fields) {
       if (bindMode === "const") {
         this.write("const ");
@@ -1435,12 +1433,12 @@ class Emitter {
             arm.pattern.binding.range,
           );
           this.write(
-            " = __symbolPayload(__match as __leaf) as SymbolType<__leaf>;\n",
+            " = __symbolPayload(__match as __leaf);\n",
           );
         }
       } else {
         this.write(
-          "const __payload = (__match as __leaf) as SymbolType<__leaf>;\n",
+          "const __payload = __symbolPayload(__match as __leaf);\n",
         );
         for (const field of arm.pattern.fields) {
           this.write("const ");
@@ -2012,6 +2010,7 @@ function fileNeedsTypesImport(ast: SourceFile): {
       const { needsTypesImport, needsAsyncImport } = encodeThunkTypeAnnotation(
         stmt.typeAnnotation.baseText,
         stmt.typeAnnotation.protocols,
+        stmt.typeAnnotation.failPayload,
       );
       if (stmt.typeAnnotation.protocols.some((p) => p.name === "Requires")) {
         requires = true;
@@ -2022,7 +2021,11 @@ function fileNeedsTypesImport(ast: SourceFile): {
         thunk = true;
       }
       if (needsAsyncImport) async = true;
-      if (needsTypesImport || /Thunk\s*</.test(stmt.typeAnnotation.baseText)) {
+      if (
+        needsTypesImport ||
+        /Thunk\s*</.test(stmt.typeAnnotation.baseText) ||
+        !!stmt.typeAnnotation.failPayload
+      ) {
         thunk = true;
       }
       if (stmt.typeAnnotation.protocols.length > 0) {

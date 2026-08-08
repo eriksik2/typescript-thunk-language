@@ -233,17 +233,19 @@ function stampIdentity<T>(value: T, identity: ThunkSymbol<any>): T {
 }
 
 /**
- * Associated payload for match bindings.
- * Object brands: the value itself. Boxed primitives: the original payload.
+ * Associated payload for match / `is` bindings and `Symbol.unwrap`.
+ * Object brands: the value itself (fields still present). Boxed primitives:
+ * the original payload. Return type is `SymbolType<T>` so opaque brands
+ * typecheck without `as unknown` at call sites.
  */
-export function __symbolPayload<T>(value: T): T {
+export function __symbolPayload<T>(value: T): SymbolType<T> {
   if (typeof value === "object" && value !== null) {
     const payload = (value as Record<symbol, unknown>)[PAYLOAD_PROP];
     if (payload !== undefined || PAYLOAD_PROP in (value as object)) {
-      return payload as T;
+      return payload as SymbolType<T>;
     }
   }
-  return value;
+  return value as SymbolType<T>;
 }
 
 /** Exhaustiveness witness for `match` — remainder must be `never`. */

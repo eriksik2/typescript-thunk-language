@@ -17,7 +17,7 @@ A `symbol` declaration introduces **one value** and **one nominal type** with th
 
 1. **Value** `Name` — identity typed by `T`; callable for [branding](./branding.md) unless `abstract`; has `.key` for the env map.
 2. **Type** `Name` — branded inhabitants (nominal over `T`). Child types are **not** subtypes of parents. Generics: `Some<A>` is a type constructor; `Some` is the shared runtime identity.
-3. `Name` → `T` assignable; `T` → `Name` only via `Name(...)` (concrete symbols).
+3. Brands are **opaque** — not assignable to `T`; recover with [`Symbol.unwrap`](./symbol-is.md). `T` → `Name` only via `Name(...)` (concrete symbols).
 4. Env APIs take the **value** `Name` (`use` / `layerOf`) or a branded object ([`provide`](../environment/provide.md)).
 5. **`extends`** — identity pedigree for [`Symbol.isAny`](./symbol-is.md) / `Symbol.to` / `Symbol.extends`. Associated type fields merge; **no** value Liskov assignability. Open hierarchy — **not** an exhaustiveness set for [`match`](../core/match.md).
 6. **`abstract`** — cannot call `Name(...)` to brand; still usable as a type, parent, and `Symbol.isAny` / `Symbol.to` target.

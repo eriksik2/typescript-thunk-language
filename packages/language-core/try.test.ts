@@ -27,8 +27,7 @@ describe("try parse / lower", () => {
   test("lowers try to run + is any Error early return", () => {
     const lowered = lowerThunkSource(withPrelude(`import { Error, type Thunk } from "@thunk/runtime"
 symbol DivideByZero extends Error {}
-type DivResult = number | DivideByZero
-const div: Thunk<DivResult> = thunk { return 1 }
+const div: Thunk<number> Fail(DivideByZero) = thunk { return 1 }
 const t = thunk {
   const n = try div
   return n + 1
@@ -36,6 +35,7 @@ const t = thunk {
 `));
     expect(lowered.generatedText).toContain("__ThunkError");
     expect(lowered.generatedText).toContain("__symbolIsAny");
+    expect(lowered.generatedText).toContain("Thunk<number | (DivideByZero)>");
     expect(lowered.generatedText).toContain("runEffect");
   });
 
