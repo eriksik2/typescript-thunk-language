@@ -19,8 +19,11 @@ bun run proof:hover
 bun run proof:requires
 ```
 
+Effectful thunk yield types use the [oracle](./oracle.md) view (`surface-oracle.test.ts`).
+
 ## Related
 
+- [Oracle](./oracle.md)
 - [File prelude](../modules/file-prelude.md)
 - [CLI](./cli.md)
 - [Architecture](../../ARCHITECTURE.md)

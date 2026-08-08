@@ -1,5 +1,5 @@
-import { succeed, defer, runEffect, machine, execute } from "@thunk/runtime/internal";
-import type { ThunkReturnType } from "@thunk/types";
+import { succeed, defer, runEffect, machine, execute, __ascribeThunkYield, __oracleRun } from "@thunk/runtime/internal";
+import type { ThunkReturnType, InferLet } from "@thunk/types";
 
 const delay = (ms: number) => defer(() => {
 let t = 0;
@@ -19,21 +19,74 @@ return succeed("zero");
  else {
 return succeed("pos");
 }
-throw new Error("unreachable");
+throw new globalThis.Error("unreachable");
 });
-const accumulate = (start: number, limit: number, cap: number) => defer(() => {
+const accumulate = (start: number, limit: number, cap: number) => __ascribeThunkYield(
+async () => {
+const warm = await __oracleRun(delay(3));
+let total = warm * 0;
+let seen = 0;
+for (let i = start; i <= limit; i = i + 1) {
+const kind = await __oracleRun(classify(i));
+if (kind === "zero") {
+continue;
+}
+if (kind === "neg") {
+seen = seen + 1;
+continue;
+}
+const v = await __oracleRun(step(i));
+seen = seen + 1;
+if (seen % 2 === 0) {
+continue;
+}
+total = total + v;
+if (total > cap) {
+break;
+}
+}
+if (total === 0) {
+return {
+      total: 0,
+      status: "empty",
+      warm: warm,
+    };
+}
+let checksum = total;
+let peels = 0;
+while (checksum > 10) {
+checksum = checksum - 7;
+peels = peels + 1;
+if (peels >= 5) {
+break;
+}
+}
+return {
+    total: total,
+    checksum: checksum,
+    peels: peels,
+    warm: warm,
+    status: "ok",
+  };
+},
+defer(() => {
 let __state = 0;
-let total;
-let seen;
-let i;
-let checksum;
-let peels;
 const __t0 = false ? delay(3) : undefined;
 let warm: ThunkReturnType<NonNullable<typeof __t0>>;
 const __t1 = false ? classify(i) : undefined;
 let kind: ThunkReturnType<NonNullable<typeof __t1>>;
 const __t2 = false ? step(i) : undefined;
 let v: ThunkReturnType<NonNullable<typeof __t2>>;
+const __v0 = false ? (warm * 0) : undefined;
+let total: InferLet<NonNullable<typeof __v0>>;
+const __v1 = false ? (0) : undefined;
+let seen: InferLet<NonNullable<typeof __v1>>;
+const __v2 = false ? (start) : undefined;
+let i: InferLet<NonNullable<typeof __v2>>;
+const __v3 = false ? (total) : undefined;
+let checksum: InferLet<NonNullable<typeof __v3>>;
+const __v4 = false ? (0) : undefined;
+let peels: InferLet<NonNullable<typeof __v4>>;
 return machine(function (__resume?: any) {
 while (true) {
 switch (__state) {
@@ -163,12 +216,24 @@ case 20:
 __state = 17;
 continue;
 default:
-throw new Error("invalid thunk state");
+throw new globalThis.Error("invalid thunk state");
 }
 }
 });
-});
-const program = defer(() => {
+})
+);
+const program = __ascribeThunkYield(
+async () => {
+const capped = await __oracleRun(accumulate(0, 12, 20));
+const empty = await __oracleRun(accumulate(-5, 0, 100));
+const small = await __oracleRun(accumulate(1, 4, 100));
+return {
+    capped: capped,
+    empty: empty,
+    small: small,
+  };
+},
+defer(() => {
 let __state = 0;
 const __t0 = false ? accumulate(0, 12, 20) : undefined;
 let capped: ThunkReturnType<NonNullable<typeof __t0>>;
@@ -198,10 +263,11 @@ return succeed({
     small: small,
   });
 default:
-throw new Error("invalid thunk state");
+throw new globalThis.Error("invalid thunk state");
 }
 }
 });
-});
+})
+);
 const result = execute(program);
 console.log(JSON.stringify(result, null, 2));

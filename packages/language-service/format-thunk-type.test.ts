@@ -56,6 +56,14 @@ describe("formatThunkType", () => {
     );
   });
 
+  test("Requires ∩ Async intersection bag pretty-prints both", () => {
+    const bag =
+      "{ readonly [Requires]: typeof Database } & { readonly [Async]: void }";
+    expect(formatThunkType("number", bag)).toBe(
+      "Thunk<number>\n  Requires(Database)\n  Async",
+    );
+  });
+
   test("encoded Fail peel → Thunk<T> Fail(E)", () => {
     expect(formatThunkType("number | (DivideByZero)", "EmptyProtocols")).toBe(
       "Thunk<number> Fail(DivideByZero)",

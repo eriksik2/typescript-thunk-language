@@ -123,7 +123,7 @@ thunk {
 | `run` inside loop condition / `finally` | **Unsupported** initially — see LANGUAGE §17.3 |
 | `try` / `catch` / `finally` | **Out of scope** for now |
 
-**Implementation notes.** `const`/`let`, expression statements, `if`/`else`, `while`, C-style `for`, `break`, and `continue` are parsed. With `run`, they lower through the state machine. `try`/`catch`/`finally` remain deferred.
+**Implementation notes.** `const`/`let`, expression statements, `if`/`else`, `while`, C-style `for`, `break`, and `continue` are parsed. With `run`, they lower through the state machine for runtime and a parallel **oracle** async view for yield `T` (TypeScript CFA). `try`/`catch`/`finally` remain deferred.
 
 ---
 
@@ -243,7 +243,7 @@ defer(() => succeed(calculate()))
 | **Status** | **Done** (runtime + state-machine lowering) |
 | **Milestone** | M0 · multi-`run` / control-flow M2 |
 
-**What it is.** Sequencing: run a source thunk, continue with its value. The lowerer emits an iterative state machine (`runEffect` / `machine`); `bind` remains for hand-written runtime use.
+**What it is.** Sequencing: run a source thunk, continue with its value. The lowerer emits an iterative state machine (`runEffect` / `machine`) for runtime and wraps it with `__ascribeThunkYield` + an async **oracle** so yield types match TypeScript CFA; `bind` remains for hand-written runtime use.
 
 **What it should look like.**
 

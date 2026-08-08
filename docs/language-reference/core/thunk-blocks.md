@@ -28,10 +28,14 @@ Body statements may include ordinary bindings, nested thunks, [`run`](./run.md) 
 ## Semantics
 
 - Pure bodies lower to `defer(() => succeed(…))`.
-- Bodies with `run` lower to `defer(() => { …; return machine(step) })` — an iterative switch-based state machine using `runEffect` / `succeed`.
-- Yield type is the type of the `return` expression (or `void`).
+- Bodies with `run` lower to `__ascribeThunkYield(async oracle, defer(() => machine(…)))`:
+  - **Oracle** — structure-preserving async body (`run` → `await __oracleRun`) so TypeScript CFA supplies yield `T`.
+  - **Machine** — iterative `runEffect` / `succeed` state machine for runtime; supplies protocol bag `P`.
+- Yield type is the type of the `return` expression (or `void`), matching an equivalent async function’s return type.
 - Pure thunks have an empty protocol bag → surface type `Thunk<T>`.
 - Nested `thunk { … }` inside ordinary TypeScript text (calls, objects, arrows) is still parsed and lowered — not left as raw `thunk` for TypeScript.
+
+See [Oracle](../tooling/oracle.md).
 
 ## Examples
 
@@ -54,3 +58,4 @@ See [`examples/basic.thunk`](../../../examples/basic.thunk) and nested usage in 
 - [Control flow](./control-flow.md)
 - [Thunk type](../types/thunk-type.md)
 - [Bindings](./bindings.md)
+- [Oracle](../tooling/oracle.md)

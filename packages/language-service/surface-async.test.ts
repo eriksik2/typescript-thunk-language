@@ -59,6 +59,7 @@ const result: Promise<number> = run program
     const d = hover!.displayString;
     expect(d).toMatch(/Thunk<\s*number/);
     expect(d).toMatch(/\bAsync\b/);
+    expect(d).not.toMatch(/\|\s*void/);
     expect(d).not.toMatch(/__brand_/);
     expect(d).not.toMatch(/Protocols\s*\(/);
   });

@@ -15,6 +15,7 @@
 | [Layer](./environment/layer.md) | environment |
 | [is](./core/is.md) | core |
 | [match](./core/match.md) | core |
+| [Oracle](./tooling/oracle.md) | tooling |
 | [Pipe](./core/pipe.md) | core |
 | [Provide](./environment/provide.md) | environment |
 | [Protocols overview](./types/protocols-overview.md) | types |

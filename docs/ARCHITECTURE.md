@@ -171,11 +171,11 @@ Keep the design doc’s separation:
 |---|---|
 | Type / protocol system | Return types, protocol payloads, composition, `execute` validation, `provide` transforms (`@thunk/types`; `Thunk` auto-injected) |
 | Public runtime | Author values: `use` / `provide` / `layerOf` / `mergeLayers` (`@thunk/runtime`) |
-| Internal runtime | Lowerer glue: `succeed` / `defer` / `runEffect` / `machine` / `execute` / `__makeSymbol` (`bind` kept for hand-written use) (`@thunk/runtime/internal`) |
+| Internal runtime | Lowerer glue: `succeed` / `defer` / `runEffect` / `machine` / `execute` / `__ascribeThunkYield` / `__oracleRun` / `__makeSymbol` (`bind` kept for hand-written use) (`@thunk/runtime/internal`) |
 
 Function signatures declare protocol transforms explicitly. The compiler does not infer protocol changes by inspecting runtime bodies.
 
-Runtime representation: tagged nodes (`succeed` | `defer` | `runEffect` | `machine` | `bind` | `use` | `provide`). Thunks with `run` lower to an **iterative switch-based state machine**; the executor resumes `machine` steps after each `runEffect` without lowering-time recursion.
+Runtime representation: tagged nodes (`succeed` | `defer` | `runEffect` | `machine` | `bind` | `use` | `provide`). Thunks with `run` lower to an **iterative switch-based state machine** for execution, plus a parallel **oracle** async body for TypeScript yield inference (`__ascribeThunkYield` / `__oracleRun` — see [oracle](./language-reference/tooling/oracle.md)). The executor resumes `machine` steps after each `runEffect` without lowering-time recursion.
 
 ---
 
