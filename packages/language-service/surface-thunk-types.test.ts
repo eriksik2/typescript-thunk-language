@@ -178,11 +178,14 @@ const program = thunk {
     const lowered = lowerThunkSource(source, fileName);
     expect(lowered.generatedText).toMatch(/InferLet/);
     expect(lowered.generatedText).toMatch(/tries\+\+/);
-    // Postfix ++ must not swallow the following if
-    expect(lowered.generatedText).not.toMatch(
-      /tries\+\+[\s\S]*if \(tries > 20\) return tries/,
-    );
+    expect(lowered.generatedText).toContain("__ascribeThunkYield");
     expect(lowered.generatedText).toMatch(/if \(tries > 20\)/);
+    // Machine must not keep surface `return tries` (parser swallow regression).
+    const machine = lowered.generatedText.slice(
+      lowered.generatedText.indexOf("return machine("),
+    );
+    expect(machine).toContain("return succeed(tries)");
+    expect(machine).not.toMatch(/\breturn tries\b/);
 
     const p = createThunkProject(projectOpts(fileName, source));
     const diags = p.getDiagnostics(fileName);
@@ -191,7 +194,8 @@ const program = thunk {
 
     const offset = source.indexOf("program");
     const hover = hoverAtOffset(p, fileName, source, offset);
-    expect(hover?.displayString).toMatch(/Thunk</);
+    expect(hover?.displayString).toMatch(/Thunk<\s*number/);
+    expect(hover!.displayString).not.toMatch(/\|\s*void/);
     expect(hover!.displayString).not.toMatch(/Requires\s*\(\s*unknown/);
   });
 

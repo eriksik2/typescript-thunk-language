@@ -186,11 +186,21 @@ interface ProtocolEntry {
 
 /**
  * Parse a protocol bag type string into postfix entries.
- * Handles EmptyProtocols, `{}`, and object types with Requires / Once-like keys.
+ * Handles EmptyProtocols, `{}`, object types, and intersections of bags
+ * (`{ [Requires]: A } & { [Async]: void }`).
  */
 export function parseProtocolBag(bag: string): ProtocolEntry[] {
   const trimmed = bag.trim();
   if (isEmptyLikeBag(trimmed)) return [];
+
+  const intersectParts = splitTopLevelIntersect(trimmed);
+  if (intersectParts.length > 1) {
+    const entries: ProtocolEntry[] = [];
+    for (const part of intersectParts) {
+      entries.push(...parseProtocolBag(part.trim()));
+    }
+    return entries;
+  }
 
   // Object type: { ... }
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -201,6 +211,47 @@ export function parseProtocolBag(bag: string): ProtocolEntry[] {
 
   // Fallback: unknown non-empty bag — opaque line (avoid for empty Omit noise)
   return [{ name: "Protocols", payload: trimmed }];
+}
+
+/** Split `A & B & C` at top-level `&` (not inside `{}` / `()` / `<>` / `[]`). */
+function splitTopLevelIntersect(text: string): string[] {
+  const parts: string[] = [];
+  let depthAngle = 0;
+  let depthBrace = 0;
+  let depthParen = 0;
+  let depthBracket = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(text, i);
+      continue;
+    }
+    if (c === "=" && text[i + 1] === ">") {
+      i++;
+      continue;
+    }
+    if (c === "<") depthAngle++;
+    else if (c === ">") depthAngle--;
+    else if (c === "{") depthBrace++;
+    else if (c === "}") depthBrace--;
+    else if (c === "(") depthParen++;
+    else if (c === ")") depthParen--;
+    else if (c === "[") depthBracket++;
+    else if (c === "]") depthBracket--;
+    else if (
+      c === "&" &&
+      depthAngle === 0 &&
+      depthBrace === 0 &&
+      depthParen === 0 &&
+      depthBracket === 0
+    ) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map((p) => p.trim()).filter(Boolean);
 }
 
 function parseObjectMembers(body: string): ProtocolEntry[] {

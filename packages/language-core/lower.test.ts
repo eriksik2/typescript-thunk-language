@@ -87,6 +87,8 @@ describe("lower", () => {
   return value * 2
 }
 `));
+    expect(lowered.generatedText).toContain("__ascribeThunkYield");
+    expect(lowered.generatedText).toContain("await __oracleRun");
     expect(lowered.generatedText).toContain("runEffect(");
     expect(lowered.generatedText).toContain("machine(");
     expect(lowered.generatedText).toContain("succeed(");
@@ -309,12 +311,20 @@ const x = use
     expect(expr?.expression?.text).toBe("tries++");
 
     const lowered = lowerThunkSource(source);
+    expect(lowered.generatedText).toContain("__ascribeThunkYield");
+    expect(lowered.generatedText).toContain("await __oracleRun");
     expect(lowered.generatedText).toContain("tries++;");
     expect(lowered.generatedText).toMatch(/if \(tries > 20\)/);
-    expect(lowered.generatedText).toContain("return succeed(tries)");
-    expect(lowered.generatedText).not.toMatch(
-      /tries\+\+[\s\S]*if \(tries > 20\) return tries/,
+    // Oracle keeps surface-shaped early return; machine uses succeed.
+    expect(lowered.generatedText).toMatch(
+      /tries\+\+;\s*\nif \(tries > 20\) return tries/,
     );
+    expect(lowered.generatedText).toContain("return succeed(tries)");
+    const machine = lowered.generatedText.slice(
+      lowered.generatedText.indexOf("return machine("),
+    );
+    expect(machine).toContain("return succeed(tries)");
+    expect(machine).not.toMatch(/\breturn tries\b/);
   });
 
   test("return run lower casts resume yield (not bare __resume)", () => {

@@ -1,5 +1,5 @@
 import { wrap } from "@thunk/runtime";
-import { succeed, defer, runEffect, machine, execute } from "@thunk/runtime/internal";
+import { succeed, defer, runEffect, machine, execute, __ascribeThunkYield, __oracleRun } from "@thunk/runtime/internal";
 import type { ThunkReturnType, InferLet } from "@thunk/types";
 
 function promiseFn(): Promise<boolean> {
@@ -7,7 +7,19 @@ function promiseFn(): Promise<boolean> {
     setTimeout(() => resolve(Math.random() > 0.5), 10)
   })
 };
-const program = defer(() => {
+const program = __ascribeThunkYield(
+async () => {
+let tries = 0;
+let isTrue = true as const;
+while (isTrue) {
+const res = await __oracleRun(wrap(() => promiseFn()));
+if (res) return tries;
+tries++;
+if (tries > 20) return tries;
+}
+throw new globalThis.Error("unreachable");
+},
+defer(() => {
 let __state = 0;
 const __t0 = false ? wrap(() => promiseFn()) : undefined;
 let res: ThunkReturnType<NonNullable<typeof __t0>>;
@@ -59,11 +71,12 @@ return succeed(tries);
 case 7:
 return succeed(tries);
 default:
-throw new Error("invalid thunk state");
+throw new globalThis.Error("invalid thunk state");
 }
 }
 });
-});
+})
+);
 const programAsFn = async () => {
   let tries = 0;
   let isTrue = true as const;

@@ -472,6 +472,38 @@ export function machine<R extends StepResult>(
 }
 
 /**
+ * Typecheck-only peel used in oracle async bodies (`await __oracleRun(t)`).
+ * Same value type as `run` / one-layer `ThunkReturnType`. Never executed —
+ * the oracle callback is passed to `__ascribeThunkYield` and not invoked.
+ */
+export function __oracleRun<A, P extends ProtocolBag>(
+  _source: Thunk<A, P>,
+): Promise<A> {
+  throw new globalThis.Error("__oracleRun is typecheck-only");
+}
+
+/**
+ * Keep runtime machine protocols, replace yield `T` with the oracle async
+ * function's return type (`Awaited<ReturnType<O>>`). Gives 1:1 TS control-flow
+ * inference for thunk bodies without trusting machine `succeed` unions.
+ */
+export function __ascribeThunkYield<
+  O extends () => Promise<any>,
+  R extends Thunk<any, any>,
+>(
+  _oracle: O,
+  runtime: R,
+): Thunk<
+  Awaited<ReturnType<O>>,
+  R extends Thunk<any, infer P> ? P : never
+> {
+  return runtime as Thunk<
+    Awaited<ReturnType<O>>,
+    R extends Thunk<any, infer P> ? P : never
+  >;
+}
+
+/**
  * Internal: Promise → thunk node with `Async`. Used by author-facing `wrap`.
  */
 export function __awaitPromise<T>(

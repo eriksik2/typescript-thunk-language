@@ -396,6 +396,10 @@ class Emitter {
   private needsMatchHelpers = false;
   private needsTryError = false;
   private needsPedigreeHelpers = false;
+  /** Effectful thunks get an async oracle + `__ascribeThunkYield`. */
+  private needsOracle = false;
+  /** When false, writeMapped writes text without source-map entries. */
+  private emitMappings = true;
   private isTempId = 0;
   private initWitnessId = 0;
   /** Same-file symbol name → resolved associated type text. */
@@ -417,6 +421,7 @@ class Emitter {
     this.needsAsyncType = typesNeeded.async;
     this.needsMakeSymbol = fileHasSymbolDecls(ast);
     this.needsThunkReturnType = fileHasRunInThunk(ast);
+    this.needsOracle = this.needsThunkReturnType;
     this.needsInferLet = fileNeedsInferLet(ast);
     this.needsMatchHelpers = fileHasMatchHelpers(ast);
     if (this.needsMatchHelpers) this.needsSymbolType = true;
@@ -444,6 +449,9 @@ class Emitter {
       "machine",
       "execute",
     ];
+    if (this.needsOracle) {
+      internalNames.push("__ascribeThunkYield", "__oracleRun");
+    }
     if (this.needsMakeSymbol) {
       internalNames.push("__makeSymbol");
     }
@@ -776,19 +784,33 @@ class Emitter {
         character: expr.range.start.character + "thunk".length,
       },
     };
-    this.writeMapped("defer", thunkKeyword);
-    this.write("(() => ");
-    this.emitThunkBody(expr.body);
-    this.write(")");
-  }
+    const normalized = normalizeAnf(expr.body, { allowTry: true });
+    const prevMaps = this.emitMappings;
+    // Nested thunks inside a machine still need oracle maps for hover.
+    this.emitMappings = true;
 
-  private emitThunkBody(body: Statement[]): void {
-    const normalized = normalizeAnf(body, { allowTry: true });
     if (!bodyContainsRun(normalized)) {
+      this.writeMapped("defer", thunkKeyword);
+      this.write("(() => ");
       this.emitPureBody(normalized);
+      this.write(")");
+      this.emitMappings = prevMaps;
       return;
     }
+
+    // Effectful thunk: typecheck via structure-preserving async oracle;
+    // runtime via state machine. Yield T from oracle; protocols from machine.
+    this.writeMapped("__ascribeThunkYield", thunkKeyword);
+    this.write("(\n");
+    this.write("async () => {\n");
+    this.emitOracleBody(normalized);
+    this.write("},\n");
+    this.write("defer(() => ");
+    this.emitMappings = false;
     this.emitStateMachine(normalized);
+    this.emitMappings = true;
+    this.write(")\n)");
+    this.emitMappings = prevMaps;
   }
 
   private emitStateMachine(body: Statement[]): void {
@@ -957,6 +979,166 @@ class Emitter {
           `internal: ${stmt.kind} should not appear in basic-block body`,
         );
     }
+  }
+
+  /**
+   * Structure-preserving async body for typecheck. Same control-flow shape as
+   * the surface (post-ANF); `run e` → `await __oracleRun(e)`; returns bare
+   * yield values (not `succeed`).
+   */
+  private emitOracleBody(body: Statement[]): void {
+    if (body.length === 0) {
+      this.write("return;\n");
+      return;
+    }
+
+    const last = body[body.length - 1]!;
+    const before = body.slice(0, -1);
+
+    for (const stmt of before) {
+      this.emitOracleStatement(stmt);
+    }
+
+    if (last.kind === "ReturnStatement") {
+      this.write("return ");
+      this.emitOracleValue(last.expression);
+      this.write(";\n");
+      return;
+    }
+
+    this.emitOracleStatement(last);
+    if (
+      last.kind === "IfStatement" ||
+      last.kind === "BlockStatement" ||
+      last.kind === "WhileStatement" ||
+      last.kind === "ForStatement"
+    ) {
+      this.write('throw new globalThis.Error("unreachable");\n');
+    }
+  }
+
+  private emitOracleStatement(stmt: Statement): void {
+    switch (stmt.kind) {
+      case "VariableStatement": {
+        this.write(`${stmt.declarationKind} `);
+        this.writeMapped(stmt.name.name, stmt.name.range);
+        if (stmt.typeAnnotation) {
+          this.write(": ");
+          this.emitTypeAnnotation(stmt.typeAnnotation);
+        }
+        this.write(" = ");
+        this.emitOracleValue(stmt.initializer);
+        this.write(";\n");
+        return;
+      }
+      case "ExpressionStatement": {
+        this.emitOracleValue(stmt.expression);
+        this.write(";\n");
+        return;
+      }
+      case "ReturnStatement":
+        this.write("return ");
+        this.emitOracleValue(stmt.expression);
+        this.write(";\n");
+        return;
+      case "BlockStatement":
+        this.write("{\n");
+        for (const s of stmt.statements) this.emitOracleStatement(s);
+        this.write("}\n");
+        return;
+      case "IfStatement":
+        if (conditionUsesIsFlow(stmt.condition)) {
+          this.write("{\n");
+          this.emitConditionFlow(
+            stmt.condition,
+            "const",
+            () => this.emitOracleStatement(stmt.consequent),
+            () => {
+              if (stmt.alternate) this.emitOracleStatement(stmt.alternate);
+            },
+          );
+          this.write("}\n");
+          return;
+        }
+        this.write("if (");
+        this.emitValueExpression(stmt.condition);
+        this.write(") ");
+        this.emitOracleStatement(stmt.consequent);
+        if (stmt.alternate) {
+          this.write(" else ");
+          this.emitOracleStatement(stmt.alternate);
+        }
+        return;
+      case "WhileStatement":
+        if (conditionUsesIsFlow(stmt.condition)) {
+          this.write("while (true) {\n");
+          this.emitConditionFlow(
+            stmt.condition,
+            "const",
+            () => this.emitOracleStatement(stmt.body),
+            () => {
+              this.write("break;\n");
+            },
+          );
+          this.write("}\n");
+          return;
+        }
+        this.write("while (");
+        this.emitValueExpression(stmt.condition);
+        this.write(") ");
+        this.emitOracleStatement(stmt.body);
+        return;
+      case "ForStatement": {
+        this.write("for (");
+        if (stmt.initializer) {
+          if (stmt.initializer.kind === "VariableStatement") {
+            const v = stmt.initializer;
+            this.write(`${v.declarationKind} `);
+            this.writeMapped(v.name.name, v.name.range);
+            this.write(" = ");
+            this.emitOracleValue(v.initializer);
+          } else {
+            this.emitOracleValue(stmt.initializer.expression);
+          }
+        }
+        this.write("; ");
+        if (stmt.condition) this.emitValueExpression(stmt.condition);
+        this.write("; ");
+        if (stmt.update) this.emitValueExpression(stmt.update);
+        this.write(") ");
+        this.emitOracleStatement(stmt.body);
+        return;
+      }
+      case "BreakStatement":
+        this.write("break;\n");
+        return;
+      case "ContinueStatement":
+        this.write("continue;\n");
+        return;
+      case "ImportDeclaration":
+      case "ProtocolDeclaration":
+      case "SymbolDeclaration":
+      case "TypeAliasDeclaration":
+      case "FeatureDeclaration":
+      case "FileDeclaration":
+      case "TagsDeclaration":
+        throw new Error(`${stmt.kind} is only valid at top level`);
+    }
+  }
+
+  /** Value emit for oracle: peels `run` via `await __oracleRun`. */
+  private emitOracleValue(expr: Expression): void {
+    if (expr.kind === "RunExpression") {
+      this.write("await __oracleRun(");
+      this.emitValueExpression(expr.expression);
+      this.write(")");
+      return;
+    }
+    if (expr.kind === "ThunkExpression") {
+      this.emitThunk(expr);
+      return;
+    }
+    this.emitValueExpression(expr);
   }
 
   private emitPureBody(body: Statement[]): void {
@@ -1510,6 +1692,10 @@ class Emitter {
   }
 
   private writeMapped(text: string, original: Range): void {
+    if (!this.emitMappings) {
+      this.write(text);
+      return;
+    }
     const genStart = { line: this.line, character: this.character };
     this.write(text);
     const genEnd = { line: this.line, character: this.character };

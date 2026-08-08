@@ -33,7 +33,7 @@ thunk {
 ## Semantics
 
 - Pure control flow (no `run`) stays as ordinary JS inside `defer(() => …)`.
-- With `run`, control flow is explicit states in `machine(step)`.
+- With `run`, control flow is explicit states in `machine(step)`; yield `T` still comes from the [oracle](../tooling/oracle.md) async view.
 - `break` / `continue` target the enclosing loop’s exit / continue states.
 - Expression-position `run` / `try` in a `while` condition is rewritten so the peel happens **each iteration** (see [pipe](./pipe.md) / [run](./run.md) ANF notes). Prefer statement `run` in `for` bodies rather than nested `run` in the `for` condition.
 - **`try` sugar** (Error early-return) is supported — see [`try`](./try.md).
