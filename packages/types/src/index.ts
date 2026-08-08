@@ -142,10 +142,26 @@ export type SymbolToTarget<V, Parent> =
   SymbolExtends<SymbolOfValue<V>, Parent> extends true ? Parent : never;
 
 /**
+ * Values in `V` whose leaf identity is `S` or extends it (pedigree).
+ * Used by `Symbol.isAny` / `is any` so control-flow narrowing excludes those
+ * arms in the else branch (TS `typeof`-style union narrowing).
+ */
+export type SymbolHasValue<V, S> = V extends any
+  ? [SymbolOfValue<V>] extends [never]
+    ? never
+    : SymbolExtends<SymbolOfValue<V>, S> extends true
+      ? V
+      : never
+  : never;
+
+/**
  * Nominal brand over associated type `T`, keyed by a unique brand key.
  * Emitted by the lowerer for each `symbol` declaration.
+ *
+ * Opaque: **not** assignable to `T` (use `Symbol.unwrap`). Still carries
+ * `__assoc` so `SymbolType` / unwrap recover the payload type.
  */
-export type Branded<T, Brand extends PropertyKey, S = unknown> = T & {
+export type Branded<T, Brand extends PropertyKey, S = unknown> = {
   readonly [K in Brand]: Brand;
 } & BrandCarrier<T> &
   IdentityCarrier<S>;

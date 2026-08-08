@@ -16,7 +16,8 @@ export {
 export {
   symbolOf,
   symbolIs,
-  symbolHas,
+  symbolIsAny,
+  symbolUnwrap,
   symbolTo,
   symbolExtends,
   Symbol,
@@ -38,9 +39,6 @@ export type {
   FailurePayload,
 } from "./failure";
 
-export { Ok, Err } from "./result";
-export type { Ok, Err, Result } from "./result";
-
 export type {
   Thunk,
   EmptyProtocols,
@@ -51,6 +49,7 @@ export type {
   SymbolType,
   SymbolOfValue,
   SymbolExtends,
+  SymbolHasValue,
   SymbolToTarget,
   IdentityCarrier,
   ParentCarrier,

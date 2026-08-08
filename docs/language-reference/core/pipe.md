@@ -11,7 +11,9 @@
 | `x \| obj.m` | `obj.m(x)` |
 | `a \| b \| c` | `c(b(a))` |
 
-In expression position, `|` is always this pipe (not bitwise OR). Type-level `|` (unions) is unchanged.
+In expression position, `|` is this pipe (not bitwise OR). Inside **type**
+positions — annotations, `type` aliases, and generics written without a space
+(`Thunk<A | B>`) — `|` is a union.
 
 ## Syntax
 

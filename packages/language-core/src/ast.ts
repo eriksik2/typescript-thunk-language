@@ -10,7 +10,9 @@
  *   import type { … } from "…"
  *   const name [: Type Requires(...) Once] = thunk { ... }
  *   const name = run expr
+ *   const name = try expr    (inside thunk: run + early-return on Error)
  *   run expr
+ *   try expr
  *   return expr
  *   protocol Name<...> { bind<A,B>: ...; ... }
  *   symbol Name = Type;
@@ -21,11 +23,12 @@
  *   symbol Name extends Parent { ... }
  *   expr | fn / expr | fn(a)   (first-arg pipe)
  *   match (expr) { Arm, … }
- *   expr is Pattern          (boolean pattern test)
+ *   expr is Pattern          (boolean exact-leaf pattern test)
+ *   expr is any Pattern      (boolean pedigree pattern test)
  *   a && b                   (logical and; binds from `is` flow left-to-right)
  *
- * Expressions: hybrid TS text + structural thunk/run/pipe/match/is; expression-position
- * `run` is normalized via ANF before machine lowering.
+ * Expressions: hybrid TS text + structural thunk/run/try/pipe/match/is; expression-position
+ * `run` / `try` are normalized via ANF before machine lowering.
  */
 
 import type { Range } from "./source-map";
@@ -84,7 +87,7 @@ export interface TagsDeclaration {
 
 /**
  * Opaque TypeScript `type Name = …` / `type Name<…> = …` passthrough.
- * Needed so `|` in type aliases is not parsed as pipe.
+ * Type aliases keep `|` as union (not pipe) in their RHS.
  */
 export interface TypeAliasDeclaration {
   readonly kind: "TypeAliasDeclaration";
@@ -205,8 +208,13 @@ export interface ProtocolClause {
 }
 
 export interface TypeAnnotation {
-  /** Base type text before postfix protocols (e.g. `Thunk<User>`). */
+  /** Base type text before Fail / postfix protocols (e.g. `Thunk<User>`). */
   readonly baseText: string;
+  /**
+   * Optional `Fail(E)` payload — part of the thunk yield (success | E),
+   * parsed before protocol postfix (`Requires` / `Async` / …).
+   */
+  readonly failPayload?: string;
   readonly protocols: readonly ProtocolClause[];
   readonly range: Range;
 }
@@ -252,6 +260,7 @@ export type Expression =
   | Identifier
   | ThunkExpression
   | RunExpression
+  | TryExpression
   | PipeExpression
   | MatchExpression
   | IsExpression
@@ -259,7 +268,8 @@ export type Expression =
   | TsExpression;
 
 /**
- * `scrutinee is Pattern` — boolean exact-leaf test.
+ * `scrutinee is Pattern` / `scrutinee is any Pattern` — boolean pattern test.
+ * Exact leaf by default; `pedigree` when `any` is present (`Symbol.isAny`).
  * `infer` bindings are only valid in `if` / `while` conditions (and `&&` chains therein).
  */
 export interface IsExpression {
@@ -267,6 +277,8 @@ export interface IsExpression {
   readonly range: Range;
   readonly scrutinee: Expression;
   readonly pattern: MatchPattern;
+  /** True for `is any` — pedigree test / narrowing. */
+  readonly pedigree: boolean;
 }
 
 /**
@@ -335,6 +347,16 @@ export interface ThunkExpression {
   readonly kind: "ThunkExpression";
   readonly range: Range;
   readonly body: Statement[];
+}
+
+/**
+ * `try expr` — inside a thunk, run `expr` and early-return Error-pedigree arms.
+ * Desugared in ANF to `run` + `if (… is any Error) return …`.
+ */
+export interface TryExpression {
+  readonly kind: "TryExpression";
+  readonly range: Range;
+  readonly expression: Expression;
 }
 
 export interface RunExpression {

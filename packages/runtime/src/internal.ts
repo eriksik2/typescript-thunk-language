@@ -16,6 +16,7 @@ import type {
   ProvideRequires,
   Requires,
   Async,
+  SymbolHasValue,
   SymbolOfValue,
   SymbolType,
   Thunk,
@@ -101,9 +102,9 @@ function asNode<T>(thunk: Thunk<T, any>): ThunkNode<T> {
  * Options for `__makeSymbol` (hierarchical / abstract symbols).
  */
 export type MakeSymbolOptions = {
-  /** Not callable — cannot brand values. Still usable with `Symbol.has`. */
+  /** Not callable — cannot brand values. Still usable with `Symbol.isAny`. */
   readonly abstract?: boolean;
-  /** Parent identity for hierarchy (`Symbol.has` / `Symbol.extends` / `Symbol.to`). */
+  /** Parent identity for hierarchy (`Symbol.isAny` / `Symbol.extends` / `Symbol.to`). */
   readonly parent?: { readonly key: symbol };
 };
 
@@ -232,17 +233,19 @@ function stampIdentity<T>(value: T, identity: ThunkSymbol<any>): T {
 }
 
 /**
- * Associated payload for match bindings.
- * Object brands: the value itself. Boxed primitives: the original payload.
+ * Associated payload for match / `is` bindings and `Symbol.unwrap`.
+ * Object brands: the value itself (fields still present). Boxed primitives:
+ * the original payload. Return type is `SymbolType<T>` so opaque brands
+ * typecheck without `as unknown` at call sites.
  */
-export function __symbolPayload<T>(value: T): T {
+export function __symbolPayload<T>(value: T): SymbolType<T> {
   if (typeof value === "object" && value !== null) {
     const payload = (value as Record<symbol, unknown>)[PAYLOAD_PROP];
     if (payload !== undefined || PAYLOAD_PROP in (value as object)) {
-      return payload as T;
+      return payload as SymbolType<T>;
     }
   }
-  return value;
+  return value as SymbolType<T>;
 }
 
 /** Exhaustiveness witness for `match` — remainder must be `never`. */
@@ -306,13 +309,32 @@ export function symbolIs<V, S extends ThunkSymbol<any>>(
 }
 
 /**
- * Hierarchy test: true when the leaf identity is `sym` or extends it.
+ * Hierarchy / pedigree test: true when the leaf identity is `sym` or extends it.
+ * Type predicate narrows like TS `typeof` (else excludes matching arms).
  */
-export function symbolHas(value: unknown, sym: ThunkSymbol<any>): boolean {
+export function symbolIsAny<V, S extends ThunkSymbol<any>>(
+  value: V,
+  sym: S,
+): value is SymbolHasValue<V, S> {
   const id = readIdentity(value);
   if (!id) return false;
   return isAncestorOrSelf(id, sym);
 }
+
+/**
+ * Assert a value is outside `sym`'s pedigree (after an `is any` early-return).
+ * Needed because state-machine lowering splits branches across `switch` cases,
+ * where TypeScript cannot keep control-flow narrowing.
+ */
+export function __excludeIsAny<V, S extends ThunkSymbol<any>>(
+  value: V,
+  _sym: S,
+): Exclude<V, SymbolHasValue<V, S>> {
+  return value as Exclude<V, SymbolHasValue<V, S>>;
+}
+
+/** @deprecated Use `symbolIsAny`. */
+export const symbolHas = symbolIsAny;
 
 /**
  * True when `child` identity is `parent` or extends it (declaration hierarchy).
@@ -326,7 +348,7 @@ export function symbolExtends(
 
 /**
  * Checked upcast along the symbol hierarchy.
- * Runtime: requires `Symbol.has(value, sym)`; otherwise calls `onFail` (typically `Defect`).
+ * Runtime: requires `Symbol.isAny(value, sym)`; otherwise calls `onFail` (typically `Defect`).
  * Does not re-stamp — `Symbol.of` stays the leaf identity.
  */
 export function symbolTo<V, S extends ThunkSymbol<any>>(
@@ -334,7 +356,7 @@ export function symbolTo<V, S extends ThunkSymbol<any>>(
   sym: S,
   onFail: (message: string) => never,
 ): SymbolType<S> & BrandCarrier<SymbolType<S>> {
-  if (!symbolHas(value, sym)) {
+  if (!symbolIsAny(value, sym)) {
     const name =
       typeof sym.key.description === "string" ? sym.key.description : "symbol";
     onFail(`Symbol.to: value is not in the hierarchy of ${name}`);

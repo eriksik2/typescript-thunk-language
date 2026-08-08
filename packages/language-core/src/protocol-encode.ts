@@ -114,54 +114,67 @@ export function encodeProtocolBag(
 }
 
 /**
- * Lower `Thunk<Y>` + postfix protocols → `Thunk<Y, Bag>` encoding.
- * If base is already `Thunk<Y, …>`, replace/merge bag (postfix wins for Requires).
+ * Lower `Thunk<Y>` + optional `Fail(E)` + postfix protocols → `Thunk<Y | E, Bag>`.
+ * Fail is part of the yield (success | errors), before protocol bags.
  */
 export function encodeThunkTypeAnnotation(
   baseText: string,
   protocols: readonly ProtocolClause[],
+  failPayload?: string,
 ): {
   typeText: string;
   needsTypesImport: boolean;
   needsAsyncImport: boolean;
+  /** Pretty surface when Fail was written: `Thunk<T> Fail(E) …` */
+  readonly failPayload?: string;
 } {
   const encoded = encodeProtocolBag(protocols);
   const base = baseText.trim();
   const thunkMatch = /^Thunk\s*<([\s\S]*)>$/.exec(base);
   const needsAsyncImport = encoded.needsAsyncImport === true;
+  const fail = failPayload?.trim();
 
   if (!thunkMatch) {
-    // Non-Thunk annotation: emit base as-is; postfix only meaningful on Thunk
-    if (protocols.length === 0) {
+    // Non-Thunk annotation: emit base as-is; Fail/postfix only meaningful on Thunk
+    if (protocols.length === 0 && !fail) {
       return {
         typeText: base,
         needsTypesImport: false,
         needsAsyncImport: false,
       };
     }
-    // Still attach bag as intersection brand if someone wrote `Foo Requires(A)` — uncommon
+    let typeText = base;
+    if (fail) {
+      typeText = `${typeText} | (${fail})`;
+    }
     if (encoded.bagType) {
       return {
-        typeText: `${base} & { __protocols: ${encoded.bagType} }`,
+        typeText: `${typeText} & { __protocols: ${encoded.bagType} }`,
         needsTypesImport: true,
         needsAsyncImport,
+        failPayload: fail,
       };
     }
     return {
-      typeText: base,
-      needsTypesImport: encoded.needsTypesImport,
+      typeText,
+      needsTypesImport: encoded.needsTypesImport || !!fail,
       needsAsyncImport,
+      failPayload: fail,
     };
   }
 
   const inner = thunkMatch[1]!.trim();
-  const yieldType = splitFirstTypeArg(inner);
+  let yieldType = splitFirstTypeArg(inner);
+  if (fail) {
+    yieldType = `${yieldType} | (${fail})`;
+  }
 
   if (!encoded.bagType) {
     return {
       typeText: `Thunk<${yieldType}>`,
       needsTypesImport: true,
       needsAsyncImport: false,
+      failPayload: fail,
     };
   }
 
@@ -169,6 +182,7 @@ export function encodeThunkTypeAnnotation(
     typeText: `Thunk<${yieldType}, ${encoded.bagType}>`,
     needsTypesImport: true,
     needsAsyncImport,
+    failPayload: fail,
   };
 }
 
@@ -195,4 +209,37 @@ function splitFirstTypeArg(inner: string): string {
     }
   }
   return inner.trim();
+}
+
+
+/**
+ * Rewrite surface `Thunk<T> Fail(E) Requires(…) Async` appearing inside opaque
+ * TS text (arrow return types, etc.) into encoded `Thunk<T | E, Bag>`.
+ */
+export function rewriteThunkSurfaceInText(text: string): string {
+  // Thunk<…> then optional Fail(…) then zero+ Requires(…)|Async|Once
+  const re =
+    /Thunk\s*<((?:[^<>]|<[^<>]*>)*)>(?:\s*Fail\s*\(([^)]*)\))?((?:\s*(?:Requires\s*\([^)]*\)|Async|Once))*)/g;
+  return text.replace(re, (_match, inner: string, fail: string | undefined, protos: string) => {
+    const protocols: { name: string; payload?: string; range: any }[] = [];
+    const protoRe = /\s*(Requires)\s*\(([^)]*)\)|\s*(Async|Once)/g;
+    let m: RegExpExecArray | null;
+    const dummyRange = {
+      start: { line: 0, character: 0 },
+      end: { line: 0, character: 0 },
+    };
+    while ((m = protoRe.exec(protos ?? "")) !== null) {
+      if (m[1] === "Requires") {
+        protocols.push({ name: "Requires", payload: m[2]!.trim(), range: dummyRange });
+      } else if (m[3]) {
+        protocols.push({ name: m[3], range: dummyRange });
+      }
+    }
+    const failPayload = fail?.trim() || undefined;
+    // Only rewrite when Fail or protocols present — plain Thunk<T> stays
+    if (!failPayload && protocols.length === 0) {
+      return `Thunk<${inner}>`;
+    }
+    return encodeThunkTypeAnnotation(`Thunk<${inner}>`, protocols, failPayload).typeText;
+  });
 }

@@ -4,16 +4,16 @@
 
 `match` is **exact leaf** pattern matching over branded symbol values. Exhaustiveness is checked by TypeScript: uncovered union members make the final `__exhaustive` call a type error.
 
-Hierarchy (`extends` / `Symbol.has`) is **not** used for arms — parents do not close open taxonomies. Closed sets are ordinary unions of **leaves**.
+Hierarchy (`extends` / `Symbol.isAny`) is **not** used for arms — parents do not close open taxonomies. Closed sets are ordinary unions of **leaves**. Use [`is any`](./is.md) for pedigree tests outside match.
 
 ## Syntax (v1)
 
 ```ts
 match (value) {
-  Ok: infer a => a,
-  Err: infer e => handle(e),
+  Some: infer a => a,
   None => 0,
   Circle { radius: infer r } => r,
+  NotFound { path: infer p } => p,
 }
 ```
 
@@ -28,32 +28,32 @@ Arms may be separated by commas and/or newlines. `run` inside arms is **not** al
 ## Semantics
 
 - Scrutinee is evaluated once.
-- Each arm uses runtime `Symbol.is` (exact leaf), never `Symbol.has`.
-- Payload bindings unwrap boxed primitives (so `Ok(42)` / `Some(1)` work).
+- Each arm uses runtime `Symbol.is` (exact leaf), never `Symbol.isAny`.
+- Payload bindings unwrap boxed primitives (so `Some(1)` works).
 - If no arm matches at runtime → throw. If arms are incomplete for the static type → **compile error** (`never`).
 
-## Result / Option
-
-Built-in Result:
+## Option / error unions
 
 ```ts
-import { Ok, Err, type Result } from "@thunk/runtime"
-
 symbol Some<T> = T
 symbol None = {}
 type Option<T> = Some<T> | None
+
+symbol NotFound extends Error { path: string }
+symbol Conflict extends Error { resource: string }
+type AppErr = NotFound | Conflict
 ```
 
-`Ok` / `Err` are generic symbols (`symbol Ok<A> = A`). See [`result.md`](../types/result.md).
+Fallible thunks use Error-subtype unions — see [Fallibility](../types/fallibility.md). There is no built-in `Ok` / `Err` / `Result`.
 
 ## Examples
 
-[`examples/match.thunk`](../../../examples/match.thunk) — Result, Option, shape union, closed error union (`NotFound \| Conflict`).
+[`examples/match.thunk`](../../../examples/match.thunk) — Option, shape union, closed error union (`NotFound \| Conflict`).
 
 ## Related
 
-- [is](./is.md) — single-arm boolean test + `if`/`while` bindings
-- [Result](../types/result.md)
+- [is](./is.md) — single-arm boolean test + `is any` pedigree
+- [Fallibility](../types/fallibility.md)
 - [symbol declarations](../symbols/symbol-declarations.md) — including generics
-- [Symbol.is / has / to](../symbols/symbol-is.md)
+- [Symbol.is / isAny](../symbols/symbol-is.md)
 - [Failure hierarchy](../symbols/failure-hierarchy.md) — open taxonomy; exhaustiveness uses leaf unions

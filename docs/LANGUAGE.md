@@ -1438,8 +1438,8 @@ The object-body form is sugar for `symbol Database = { name: string }`.
 6. Branding **object** values stamps the identity so `Symbol.of(branded)` recovers `Name` (leaf); primitives stay naked (use `layerOf` for those).
 7. Env: `use(Name)`; `provide(thunk, branded)` or `provide(thunk, layerOf(Name, impl))`.
 8. `Requires` bag keys are symbol **identities** (`typeof Database`), not the branded service shape — **exact** match (not subtype-aware).
-9. **`extends`**: identity pedigree for `Symbol.has` / `Symbol.to` / `Symbol.extends`. Associated types merge; child branded values are **not** assignable to the parent type.
-10. **`abstract`**: identity is not a brand constructor; still usable as a type, parent, and `Symbol.has` / `Symbol.to` target.
+9. **`extends`**: identity pedigree for `Symbol.isAny` / `Symbol.to` / `Symbol.extends`. Associated types merge; child branded values are **not** assignable to the parent type.
+10. **`abstract`**: identity is not a brand constructor; still usable as a type, parent, and `Symbol.isAny` / `Symbol.to` target.
 11. Anonymous `symbol { ... }` in expression position is out of scope (deferred).
 
 Built-in Failure hierarchy (`Failure` abstract root; `Defect`, `UnhandledError`, `Error`): see [`language-reference/symbols/failure-hierarchy.md`](./language-reference/symbols/failure-hierarchy.md).
@@ -1451,7 +1451,8 @@ Example (branding):
 ```ts
 symbol Age = number
 const a: Age = Age(30)
-const n: number = a   // ok
+// const n: number = a            // error — brands are opaque
+const n: number = Symbol.unwrap(a)  // ok
 // const bad: Age = 30 // error
 ```
 

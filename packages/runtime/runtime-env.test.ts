@@ -123,7 +123,7 @@ describe("hierarchical / abstract symbols", () => {
     expect(() => Failure({ message: "x" })).toThrow(/abstract symbol/);
   });
 
-  test("Symbol.is is exact; Symbol.has walks hierarchy", () => {
+  test("Symbol.is is exact; Symbol.isAny walks hierarchy", () => {
     const Failure = __makeSymbol<{ message: string }>("Failure", {
       abstract: true,
     });
@@ -137,9 +137,9 @@ describe("hierarchical / abstract symbols", () => {
     expect(Symbol.of(defect)).toBe(Defect);
     expect(Symbol.is(defect, Defect)).toBe(true);
     expect(Symbol.is(defect, Failure)).toBe(false);
-    expect(Symbol.has(defect, Failure)).toBe(true);
-    expect(Symbol.has(defect, Defect)).toBe(true);
-    expect(Symbol.has(defect, Unhandled)).toBe(false);
+    expect(Symbol.isAny(defect, Failure)).toBe(true);
+    expect(Symbol.isAny(defect, Defect)).toBe(true);
+    expect(Symbol.isAny(defect, Unhandled)).toBe(false);
     expect(Symbol.extends(Defect, Failure)).toBe(true);
     expect(Symbol.extends(Defect, Unhandled)).toBe(false);
   });
@@ -156,7 +156,7 @@ describe("hierarchical / abstract symbols", () => {
     });
     const defect = DefectSym({ message: "boom" });
     const asFailure = Symbol.to(defect, Failure);
-    expect(asFailure.message).toBe("boom");
+    expect(Symbol.unwrap(asFailure).message).toBe("boom");
     expect(Symbol.of(asFailure)).toBe(DefectSym);
     expect(() =>
       Symbol.to(defect, Sibling as never),
@@ -174,14 +174,15 @@ describe("hierarchical / abstract symbols", () => {
     const d = Defect({ message: "invariant" });
     const u = UnhandledError({ message: "rejected" });
     const e = ThunkError({ message: "app" });
-    expect(Sym.has(d, Failure)).toBe(true);
+    expect(Sym.isAny(d, Failure)).toBe(true);
     expect(Sym.is(d, Failure)).toBe(false);
     expect(Sym.is(d, Defect)).toBe(true);
-    expect(Sym.has(u, Failure)).toBe(true);
-    expect(Sym.has(e, Failure)).toBe(true);
-    expect(Sym.has(d, UnhandledError)).toBe(false);
+    expect(Sym.isAny(u, Failure)).toBe(true);
+    expect(Sym.isAny(e, Failure)).toBe(true);
+    expect(Sym.isAny(d, UnhandledError)).toBe(false);
     expect(Sym.of(d)).toBe(Defect);
-    expect(Sym.to(d, Failure).message).toBe("invariant");
+    expect(Sym.to(d, Failure)).toBeTruthy();
+    expect(Sym.unwrap(Sym.to(d, Failure)).message).toBe("invariant");
     expect(() =>
       (Failure as unknown as (v: { message: string }) => unknown)({
         message: "nope",

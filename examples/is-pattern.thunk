@@ -1,18 +1,43 @@
 file isPattern of Examples
 
-import { Ok, Err, type Result } from "@thunk/runtime"
+import { Error, Symbol } from "@thunk/runtime"
 
-const describe = (r: Result<number, string>) => thunk {
-  if (r is Err: infer e) {
-    return "err " + e
+symbol NotFound extends Error {
+  path: string
+}
+symbol Conflict extends Error {
+  resource: string
+}
+type AppErr = NotFound | Conflict
+
+/** Pedigree: any Error arm vs success number. */
+const describe = (r: number | AppErr) => thunk {
+  if (r is any Error: infer e) {
+    return "err " + e.message
   }
-  // Bindings flow through && into later conjuncts and the then-branch
-  if (r is Ok: infer n && n > 0) {
-    return "pos " + n
+  if (r > 0) {
+    return "pos " + r
   }
-  return "non-positive ok"
+  return "non-positive"
 }
 
-const a = run describe(Ok(3))
-const b = run describe(Err("boom"))
-const flag = Err("x") is Err
+/** Exact leaf arms. */
+const handled = (r: number | AppErr) => thunk {
+  if (r is NotFound { path: infer p }) {
+    return "missing " + p
+  }
+  if (r is Conflict { resource: infer res }) {
+    return "conflict " + res
+  }
+  return "ok " + r
+}
+
+const a = run describe(3)
+const b = run describe(NotFound({ message: "gone", path: "/x" }))
+const c = run handled(Conflict({ message: "busy", resource: "lock" }))
+const flag = NotFound({ message: "x", path: "/" }) is any Error
+const exact = NotFound({ message: "x", path: "/" }) is Error
+const _pedigree = Symbol.isAny(
+  NotFound({ message: "x", path: "/" }),
+  Error,
+)

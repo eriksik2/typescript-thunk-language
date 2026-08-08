@@ -1,5 +1,5 @@
 /**
- * Match v1 + Result / Option / error-union surface tests.
+ * Match v1 + Option / error-union surface tests.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -28,12 +28,7 @@ function projectOpts(fileName: string, source: string) {
   } as const;
 }
 
-const matchExample = withPrelude(`import {
-  Ok,
-  Err,
-  Error,
-  type Result,
-} from "@thunk/runtime"
+const matchExample = withPrelude(`import { Error } from "@thunk/runtime"
 
 symbol Some<T> = T
 symbol None = {}
@@ -68,12 +63,6 @@ const unwrapOption = (o: Option<number>): number =>
     None => 0,
   }
 
-const showResult = (r: Result<number, string>): string =>
-  match (r) {
-    Ok: infer n => "ok " + n,
-    Err: infer e => "err " + e,
-  }
-
 const showAppErr = (e: AppErr): string =>
   match (e) {
     NotFound { path: infer p, message: infer m } => "missing " + p + ": " + m,
@@ -82,7 +71,6 @@ const showAppErr = (e: AppErr): string =>
 
 const shapes = describeShape(Circle({ radius: 3 }))
 const opt = unwrapOption(Some(42))
-const res = showResult(Ok(7))
 `);
 
 describe("surface: match v1", () => {
@@ -107,11 +95,11 @@ describe("surface: match v1", () => {
     expect(lowered.generatedText).toMatch(/type Some<T>/);
   });
 
-  test("typechecks; hover showResult / bindings", () => {
+  test("typechecks; hover showAppErr / bindings", () => {
     const p = createThunkProject(projectOpts(fileName, matchExample));
     expect(p.getDiagnostics(fileName)).toEqual([]);
 
-    const offset = matchExample.indexOf("const showResult") + "const ".length;
+    const offset = matchExample.indexOf("const showAppErr") + "const ".length;
     const hover = hoverAtOffset(p, fileName, matchExample, offset);
     expect(hover?.displayString).toBeTruthy();
     expect(hover!.displayString).not.toMatch(/__brand_/);
@@ -119,10 +107,13 @@ describe("surface: match v1", () => {
   });
 
   test("non-exhaustive match is a type error", () => {
-    const src = withPrelude(`import { Ok, Err, type Result } from "@thunk/runtime"
-const bad = (r: Result<number, string>): string =>
-  match (r) {
-    Ok: infer n => "ok " + n,
+    const src = withPrelude(`import { Error } from "@thunk/runtime"
+symbol NotFound extends Error { path: string }
+symbol Conflict extends Error { resource: string }
+type AppErr = NotFound | Conflict
+const bad = (e: AppErr): string =>
+  match (e) {
+    NotFound: infer n => "missing " + n.path,
   }
 `);
     const p = createThunkProject(projectOpts(fileName, src));

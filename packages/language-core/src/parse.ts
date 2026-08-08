@@ -583,23 +583,68 @@ class Parser {
   }
 
   /**
-   * Type annotation: base TS type + optional postfix `Requires(...)` / `Once`.
+   * Type annotation: base TS type + optional `Fail(…)` + postfix protocols.
+   * Surface order: `Thunk<T> Fail(E) Requires(X) Async`
    */
   private parseTypeAnnotation(): TypeAnnotation {
     const start = this.pos;
     const baseText = this.consumeTypeBase();
     this.skipTrivia();
+    let failPayload: string | undefined;
+    if (this.peekKeyword("Fail")) {
+      failPayload = this.parseFailClause();
+      this.skipTrivia();
+    }
     const protocols: ProtocolClause[] = [];
-    while (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
+    while (
+      this.peekKeyword("Requires") ||
+      this.peekKeyword("Once") ||
+      this.peekKeyword("Async")
+    ) {
       protocols.push(this.parseProtocolClause());
       this.skipTrivia();
     }
     const end = this.pos;
     return {
       baseText: baseText.trim(),
+      failPayload,
       protocols,
       range: this.range(start, end),
     };
+  }
+
+  /** `Fail(E)` — error arms united into the thunk yield. */
+  private parseFailClause(): string {
+    const start = this.pos;
+    if (!this.matchKeyword("Fail")) {
+      throw new ParseError("expected Fail", this.pos);
+    }
+    this.skipTrivia();
+    this.expect("(");
+    this.skipTrivia();
+    const payloadStart = this.pos;
+    let depth = 1;
+    while (!this.eof() && depth > 0) {
+      const c = this.peek();
+      if (c === "(") depth++;
+      else if (c === ")") {
+        depth--;
+        if (depth === 0) break;
+      } else if (c === '"' || c === "'" || c === "`") {
+        this.consumeString(c);
+        continue;
+      }
+      this.pos++;
+    }
+    if (depth !== 0) {
+      throw new ParseError("unterminated Fail(...)", start);
+    }
+    const payload = this.text.slice(payloadStart, this.pos).trim();
+    this.pos++; // )
+    if (!payload) {
+      throw new ParseError("Fail() requires a type argument", start);
+    }
+    return payload;
   }
 
   /** Consume type text until postfix protocol keyword or `=` at depth 0. */
@@ -620,12 +665,17 @@ class Parser {
       ) {
         if (this.peek() === "=") break;
         if (this.peek() === "\n") {
-          // Look ahead: newline then Requires/Once continues annotation;
+          // Look ahead: newline then Fail/Requires/Once continues annotation;
           // newline then = or other statement ends base (protocols parsed after).
           const save = this.pos;
           this.pos++;
           this.skipTrivia();
-          if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) {
+          if (
+            this.peekKeyword("Fail") ||
+            this.peekKeyword("Requires") ||
+            this.peekKeyword("Once") ||
+            this.peekKeyword("Async")
+          ) {
             this.pos = save;
             break;
           }
@@ -635,17 +685,29 @@ class Parser {
           }
           this.pos = save;
         }
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async")) break;
+        if (
+          this.peekKeyword("Fail") ||
+          this.peekKeyword("Requires") ||
+          this.peekKeyword("Once") ||
+          this.peekKeyword("Async")
+        )
+          break;
       }
 
       const c = this.peek();
       if (c === "\n" && depthParen === 0 && depthBrace === 0 && depthAngle === 0) {
         // include newline in base only if continuing type (generics rarely span);
-        // stop before postfix protocols (handled above)
+        // stop before Fail / postfix protocols (handled above)
         const save = this.pos;
         this.pos++;
         this.skipTrivia();
-        if (this.peekKeyword("Requires") || this.peekKeyword("Once") || this.peekKeyword("Async") || this.peek() === "=") {
+        if (
+          this.peekKeyword("Fail") ||
+          this.peekKeyword("Requires") ||
+          this.peekKeyword("Once") ||
+          this.peekKeyword("Async") ||
+          this.peek() === "="
+        ) {
           this.pos = save;
           break;
         }
@@ -972,8 +1034,8 @@ class Parser {
    *
    *   expr     = andExpr
    *   andExpr  = isExpr ('&&' isExpr)*
-   *   isExpr   = runExpr ('is' pattern)?
-   *   runExpr  = 'run' runExpr | pipeExpr
+   *   isExpr   = runExpr ('is' 'any'? pattern)?
+   *   runExpr  = 'run' runExpr | 'try' runExpr | pipeExpr
    *   pipeExpr = primary ('|' primary)*
    *   primary  = thunk | match | '(' … ')' | tsAtom
    */
@@ -1017,12 +1079,19 @@ class Parser {
     if (!this.atKeywordHere("is")) return left;
     this.pos += "is".length;
     this.skipTrivia();
+    let pedigree = false;
+    if (this.atKeywordHere("any")) {
+      this.pos += "any".length;
+      this.skipTrivia();
+      pedigree = true;
+    }
     const pattern = this.parseMatchPattern();
     const isExpr: IsExpression = {
       kind: "IsExpression",
       range: this.range(start, this.pos),
       scrutinee: left,
       pattern,
+      pedigree,
     };
     return isExpr;
   }
@@ -1035,6 +1104,15 @@ class Parser {
       const inner = this.parseRunExpression();
       return {
         kind: "RunExpression",
+        range: this.range(start, this.pos),
+        expression: inner,
+      };
+    }
+    if (this.matchKeyword("try")) {
+      this.skipTrivia();
+      const inner = this.parseRunExpression();
+      return {
+        kind: "TryExpression",
         range: this.range(start, this.pos),
         expression: inner,
       };
@@ -1234,6 +1312,7 @@ class Parser {
     let depthParen = 0;
     let depthBrace = 0;
     let depthBracket = 0;
+    let depthAngle = 0;
     const parts: TsExpressionPart[] = [];
     let chunkStart = this.pos;
 
@@ -1250,7 +1329,12 @@ class Parser {
 
     while (!this.eof()) {
       const c = this.peek();
-      if (depthParen === 0 && depthBrace === 0 && depthBracket === 0) {
+      if (
+        depthParen === 0 &&
+        depthBrace === 0 &&
+        depthBracket === 0 &&
+        depthAngle === 0
+      ) {
         if (c === ";" || c === "}" || c === ",") break;
         // Newline ends the expression unless the preceding token expects a
         // continuation (arrow `=>`, operators, etc.) so
@@ -1258,7 +1342,8 @@ class Parser {
         if (c === "\n" && !this.tsExprContinuesAfterNewline(parts, chunkStart)) {
           break;
         }
-        // Pipe operator — leave for parsePipeExpression (not `||`)
+        // Pipe operator — leave for parsePipeExpression (not `||`).
+        // Inside `<…>` / `(…)` / `{…}` / `[…]`, `|` is a type union.
         if (c === "|" && this.text[this.pos + 1] !== "|") break;
         // Logical and — leave for parseAndExpression
         if (c === "&" && this.text[this.pos + 1] === "&") break;
@@ -1291,6 +1376,13 @@ class Parser {
       else if (c === "}") {
         if (depthBrace === 0) break;
         depthBrace--;
+      } else if (c === "<") {
+        // Generics: `Ident<…>` with no space before `<` (so `|` inside is union).
+        // Comparisons keep spaces (`i < 3`) and must not open angle depth —
+        // otherwise `;` in `for` headers is swallowed.
+        if (this.precededImmediatelyByIdent()) depthAngle++;
+      } else if (c === ">") {
+        if (depthAngle > 0) depthAngle--;
       } else if (c === "[") depthBracket++;
       else if (c === "]") {
         if (depthBracket === 0) break;
@@ -1420,8 +1512,11 @@ class Parser {
       this.pos = save;
     }
 
-    // Nested `run` for ANF — not after `.` (property `x.run`)
-    if (this.peekKeyword("run") && !this.precededByDot()) {
+    // Nested `run` / `try` for ANF — not after `.` (property `x.run`)
+    if (
+      (this.peekKeyword("run") || this.peekKeyword("try")) &&
+      !this.precededByDot()
+    ) {
       onBeforeEmbed();
       parts.push({
         kind: "embedded",
@@ -1462,6 +1557,16 @@ class Parser {
       return c === ".";
     }
     return false;
+  }
+
+  /**
+   * True when `<` sits immediately after an identifier (`Thunk<…>`), with no
+   * whitespace. Used to distinguish generics from comparisons (`i < 3`).
+   */
+  private precededImmediatelyByIdent(): boolean {
+    if (this.pos === 0) return false;
+    const prev = this.text[this.pos - 1]!;
+    return this.isIdentPart(prev);
   }
   private atIdentBoundary(): boolean {
     if (!this.isIdentStart(this.peek())) return false;

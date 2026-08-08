@@ -1,6 +1,6 @@
 /**
  * Surface tests: hierarchical / abstract symbols + Failure builtins.
- * No value LSP — use Symbol.has / Symbol.to.
+ * No value LSP — use Symbol.isAny / Symbol.to.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -97,11 +97,11 @@ describe("surface: Failure hierarchy", () => {
 } from "@thunk/runtime"
 
 const d = Defect({ message: "boom" })
-const ok = Symbol.has(d, Failure)
+const ok = Symbol.isAny(d, Failure)
 const asFailure = Symbol.to(d, Failure)
 `);
 
-  test("Symbol.has / Symbol.to typecheck (no Failure assignability)", () => {
+  test("Symbol.isAny / Symbol.to typecheck (no Failure assignability)", () => {
     const p = createThunkProject(projectOpts(fileName, source));
     expect(p.getDiagnostics(fileName)).toEqual([]);
   });

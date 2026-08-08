@@ -325,10 +325,13 @@ function collapseRequiresPayloadPart(part: string): string {
  * Format `Thunk<Yield, Bag>` → surface multiline string (no const/prefix).
  * Nested `Thunk<…>` yield types are pretty-printed compactly inline
  * (`Thunk<Thunk<boolean> Async>`).
+ * Encoded Fail (`T | (E)`) pretty-prints as `Thunk<T> Fail(E)` before protocols.
  */
 export function formatThunkType(yieldType: string, bag: string): string {
   const protocols = parseProtocolBag(bag);
-  const head = `Thunk<${prettyNestedYieldType(yieldType.trim())}>`;
+  const { success, fail } = peelFailFromYield(yieldType.trim());
+  let head = `Thunk<${prettyNestedYieldType(success)}>`;
+  if (fail !== undefined) head += ` Fail(${fail})`;
   if (protocols.length === 0) return head;
 
   const lines = [head];
@@ -342,15 +345,37 @@ export function formatThunkType(yieldType: string, bag: string): string {
   return lines.join("\n");
 }
 
-/** Compact `Thunk<T> Requires(A) Async` for nested yield positions. */
+/** Compact `Thunk<T> Fail(E) Requires(A) Async` for nested yield positions. */
 export function formatThunkTypeCompact(yieldType: string, bag: string): string {
   const protocols = parseProtocolBag(bag);
-  let s = `Thunk<${prettyNestedYieldType(yieldType.trim())}>`;
+  const { success, fail } = peelFailFromYield(yieldType.trim());
+  let s = `Thunk<${prettyNestedYieldType(success)}>`;
+  if (fail !== undefined) s += ` Fail(${fail})`;
   for (const p of protocols) {
     if (p.payload === undefined) s += ` ${p.name}`;
     else s += ` ${p.name}(${p.payload})`;
   }
   return s;
+}
+
+/**
+ * Lower encodes `Fail(E)` as a trailing parenthesized union arm: `T | (E)`.
+ * Peel that back for surface hover. Bare unions (`number | string`) stay as-is.
+ */
+function peelFailFromYield(yieldType: string): {
+  success: string;
+  fail?: string;
+} {
+  const parts = splitTopLevelUnion(yieldType);
+  if (parts.length < 2) return { success: yieldType.trim() };
+  const last = parts[parts.length - 1]!.trim();
+  if (!(last.startsWith("(") && last.endsWith(")"))) {
+    return { success: yieldType.trim() };
+  }
+  const fail = last.slice(1, -1).trim();
+  if (!fail) return { success: yieldType.trim() };
+  const success = parts.slice(0, -1).join(" | ").trim();
+  return { success, fail };
 }
 
 /**

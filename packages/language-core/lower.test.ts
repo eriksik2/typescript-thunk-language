@@ -96,13 +96,16 @@ describe("lower", () => {
     expect(lowered.sourceMap.mappings.length).toBeGreaterThan(0);
   });
 
-  test("lowers symbol declaration to brand + __makeSymbol", () => {
+  test("lowers symbol declaration to opaque brand + __makeSymbol", () => {
     const lowered = lowerThunkSource(withPrelude(`symbol Age = number
 const a: Age = Age(30)
 `));
     expect(lowered.generatedText).toContain("__makeSymbol");
     expect(lowered.generatedText).toContain("declare const __brand_Age");
-    expect(lowered.generatedText).toContain("type Age = number &");
+    expect(lowered.generatedText).toMatch(
+      /type Age = \{ readonly \[__brand_Age\]/,
+    );
+    expect(lowered.generatedText).not.toMatch(/type Age = number &/);
     expect(lowered.generatedText).toContain("__symbolIdentity?: typeof Age");
     expect(lowered.generatedText).toContain('__makeSymbol<number>("Age")');
     expect(lowered.generatedText).not.toContain("createTag");
@@ -119,8 +122,9 @@ symbol Defect extends Failure
     expect(lowered.generatedText).toContain("__abstract: true");
     expect(lowered.generatedText).toContain("__parent?: typeof Failure");
     expect(lowered.generatedText).toMatch(
-      /type Defect = \{\s*message:\s*string\s*\} &/,
+      /type Defect = \{ readonly \[__brand_Defect\]/,
     );
+    expect(lowered.generatedText).toContain("__assoc:");
     expect(lowered.generatedText).not.toMatch(/type Defect = Failure &/);
     expect(lowered.generatedText).toContain("__brand_Defect");
     expect(lowered.generatedText).toMatch(
